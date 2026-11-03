@@ -37,11 +37,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/TUJUplayer/dsh-pet-float.git"
+    "url": "git+https://github.com/tujuplayer/dsh-pet-float.git"
   },
-  "homepage": "https://github.com/TUJUplayer/dsh-pet-float",
+  "homepage": "https://github.com/tujuplayer/dsh-pet-float",
   "bugs": {
-    "url": "https://github.com/TUJUplayer/dsh-pet-float/issues"
+    "url": "https://github.com/tujuplayer/dsh-pet-float/issues"
   },
   "author": "TUJU (小肥鱼)",
   "license": "MIT"

@@ -33,7 +33,7 @@ This plugin puts a small character ball on top of your desktop and keeps it hone
 Install it into a DSH profile:
 
 ```sh
-dsh plugin --profile web add github:TUJUplayer/dsh-pet-float
+dsh plugin --profile web add github:tujuplayer/dsh-pet-float
 ```
 
 The CLI refuses `--profile desktop` (the desktop app owns that profile), so if you use the desktop app, install the same package from your plugin market UI, or let it manage the desktop profile for you. Either way, **restart DSH** afterwards — the host plugin is loaded at startup. On the first run it copies the companion `DshPetFloat.exe` and the default avatar/sound into `%USERPROFILE%\.dsh\dsh-pet\`, so there is no second install step.
@@ -41,7 +41,7 @@ The CLI refuses `--profile desktop` (the desktop app owns that profile), so if y
 If you would rather install a prebuilt tarball than build from a git checkout, the release asset works too:
 
 ```sh
-dsh plugin --profile web add "https://github.com/TUJUplayer/dsh-pet-float/releases/latest/download/dsh-pet-float.tgz"
+dsh plugin --profile web add "https://github.com/tujuplayer/dsh-pet-float/releases/latest/download/dsh-pet-float.tgz"
 ```
 
 ## Usage / 用法
