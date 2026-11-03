@@ -10,7 +10,8 @@
     "avatarFile": "",
     "soundFile": "",
     "stateFile": "C:\\Users\\TUJU\\.dsh\\.dshp-state.json",
-    "cmdFile": "C:\\Users\\TUJU\\.dsh\\.dshp-cmd.json"
+    "cmdFile": "C:\\Users\\TUJU\\.dsh\\.dshp-cmd.json",
+    "petSoundFile": ""
   },
   "page": {
     "alive": true,
@@ -35,21 +36,70 @@
     "waitingSince": 1793619345000,
     "question": {
       "text": "悬浮球默认贴在屏幕右下角，还是左上角？",
-      "options": ["右下角（推荐）", "左上角"]
+      "options": [
+        "右下角（推荐）",
+        "左上角"
+      ]
     },
     "approval": null,
-    "todos": { "done": 1, "total": 3, "current": "确认默认位置" },
-    "tokens": { "turn": 4200, "total": 564200, "cached": 412000 },
+    "todos": {
+      "done": 1,
+      "total": 3,
+      "current": "确认默认位置"
+    },
+    "tokens": {
+      "turn": 4200,
+      "total": 564200,
+      "cached": 412000
+    },
     "lastText": "需要你确认一下悬浮球的默认摆放位置，我再继续。",
     "updatedAt": 1793619360000
   },
   "sessions": [
-    { "key": "demo-question", "title": "实现桌面宠物悬浮球的状态面板与交互", "status": "waiting-question", "updatedAt": 1793619360000, "current": true },
-    { "key": "demo-done", "title": "修复页面桥 /dsh-pet/cmd-ack 的重复确认", "status": "done", "updatedAt": 1793619300000, "current": false },
-    { "key": "demo-idle-1", "title": "整理宿主插件路由表", "status": "idle", "updatedAt": 1793619000000, "current": false }
+    {
+      "key": "demo-question",
+      "title": "实现桌面宠物悬浮球的状态面板与交互",
+      "status": "waiting-question",
+      "updatedAt": 1793619360000,
+      "current": true
+    },
+    {
+      "key": "demo-done",
+      "title": "修复页面桥 /dsh-pet/cmd-ack 的重复确认",
+      "status": "done",
+      "updatedAt": 1793619300000,
+      "current": false
+    },
+    {
+      "key": "demo-idle-1",
+      "title": "整理宿主插件路由表",
+      "status": "idle",
+      "updatedAt": 1793619000000,
+      "current": false
+    }
   ],
   "events": [
-    { "id": "e-2001", "kind": "question", "title": "悬浮球默认贴哪里？", "ts": 1793619345000 }
+    {
+      "id": "e-2001",
+      "kind": "question",
+      "title": "悬浮球默认贴哪里？",
+      "ts": 1793619345000
+    }
   ],
-  "counts": { "pending": 1, "running": 0 }
+  "counts": {
+    "pending": 1,
+    "running": 0
+  },
+  "wallet": {
+    "ok": true,
+    "source": "account",
+    "currency": "CNY",
+    "balance": 77.72,
+    "dayStart": 77.84,
+    "todaySpend": 0.12,
+    "todayTokens": 152340,
+    "partial": true,
+    "updatedAt": 1793619360000,
+    "error": ""
+  }
 }

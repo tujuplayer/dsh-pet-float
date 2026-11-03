@@ -70,7 +70,7 @@ test('首次运行把伴侣 exe 与默认素材铺到 $DSH_HOME/dsh-pet', async 
   const host = makeHost()
   plugin.apply(host.root)
   await new Promise((r) => setTimeout(r, 300))
-  for (const name of ['DshPetFloat.exe', 'avatar.png', 'sound.wav']) {
+  for (const name of ['DshPetFloat.exe', 'avatar.png', 'sound.wav', 'pet.wav']) {
     const p = path.join(PET_DIR, name)
     assert.ok(fs.existsSync(p), `缺少 ${name}`)
     assert.ok(fs.statSync(p).size > 1000, `${name} 太小`)
@@ -90,6 +90,7 @@ test('状态文件里指向的 avatar/sound 就是铺好的默认素材', async 
   const snap = JSON.parse(fs.readFileSync(stateFile, 'utf8'))
   assert.equal(path.basename(snap.host.avatarFile), 'avatar.png')
   assert.equal(path.basename(snap.host.soundFile), 'sound.wav')
+  assert.equal(path.basename(snap.host.petSoundFile), 'pet.wav')
 })
 
 test('再跑一次不会覆盖用户自备的头像', async () => {

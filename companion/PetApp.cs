@@ -24,6 +24,10 @@ namespace DshPetFloat
         public bool SaveConfig = true;
         public bool SelftestOpen;
         public bool SelftestQuit;
+        public bool SelftestPet;
+        public bool SelftestPress;
+        public bool SelftestStatus;
+        public bool SelftestMutex;
         public string SelftestRenderDir;
     }
 
@@ -62,6 +66,16 @@ namespace DshPetFloat
         private bool _panelSuppressed;  // 点了面板的 ×：光标离开之前别再弹
         private long _lastInteractionMs;
         private bool _exiting;
+
+        // ---- v1.1：气泡与捏捏（SPEC 3.5.2 / 3.5.3）----
+        private BubbleWindow _bubble;
+        private ToolStripMenuItem _menuBubble;
+        private ToolStripMenuItem _menuPetCount;
+        private readonly Random _rng = new Random();
+        private string _prevStatus = "";      // 上一帧状态，用于“状态进入 waiting/done 时弹一次”
+        private long _idleSinceMs;            // 连续 idle 的起点（0 = 不在 idle）
+        private long _lastBubbleMs;           // 上次弹气泡的时间（控制闲聊间隔）
+        private long _lastPetSaveMs;          // 揉捏时别每 400ms 写一次配置
 
         public PetApp(PetOptions opt)
         {
@@ -103,6 +117,10 @@ namespace DshPetFloat
             _panel.ActionRequested = OnPanelAction;
             _panel.SetState(_state, false);
 
+            _bubble = new BubbleWindow();
+            _bubble.SetConfigScale(_config.Scale);
+            _ball.Pet = OnBallPet;
+
             SyncAutoStart();
             CreateTray();
 
@@ -123,6 +141,12 @@ namespace DshPetFloat
                 StartSelftestOpen();
             if (_opt.SelftestQuit)
                 StartSelftestQuit();
+            if (_opt.SelftestPet)
+                StartSelftestPet();
+            if (_opt.SelftestPress)
+                StartSelftestPress();
+            if (_opt.SelftestStatus)
+                StartSelftestStatus();
         }
 
         // ───────────────────── 状态文件 ─────────────────────
@@ -175,6 +199,20 @@ namespace DshPetFloat
                 }
 
                 HandleEvents(st);
+
+                // v1.1：状态进入 waiting-question / waiting-approval / done / error 各弹一句。
+                // 第一帧只记录不弹（冷启动不补播，和事件去重一个道理）。
+                string status = online ? st.StatusOrIdle : "idle";
+                if (_prevStatus.Length == 0)
+                {
+                    _prevStatus = status;
+                }
+                else
+                {
+                    if (status != _prevStatus && online)
+                        OnStatusBubble(status);
+                    _prevStatus = status;
+                }
             }
             catch (Exception ex)
             {
@@ -249,6 +287,125 @@ namespace DshPetFloat
             Log.Info("播放提示音：" + kind);
         }
 
+        // ───────────────────── v1.1 气泡与捏捏 ─────────────────────
+
+        /// <summary>状态切换时的台词（同一次事件只弹一次：靠 _prevStatus 边沿检测）。</summary>
+        private void OnStatusBubble(string status)
+        {
+            // v1.1.1（Lead m00728）：状态边沿只从对应状态的池里抽，不再从中性 bubbles 池抽
+            string key = WalletFormat.StatusKey(status);
+            if (key == null)
+                return;
+            List<string> configured;
+            switch (key)
+            {
+                case "question": configured = _config.QuestionLines; break;
+                case "approval": configured = _config.ApprovalLines; break;
+                case "done": configured = _config.DoneLines; break;
+                default: configured = _config.ErrorLines; break;
+            }
+            string[] lines = WalletFormat.Effective(configured, WalletFormat.DefaultLinesFor(key));
+            ShowBubbleFrom(lines, 3200, key);
+        }
+
+        /// <summary>被捏一次：计数、音效、台词。揉捏每 400ms 触发一次，所以配置写盘要节流。</summary>
+        private void OnBallPet()
+        {
+            try
+            {
+                _config.PetCount++;
+                long now = Util.NowMs();
+                if (now - _lastPetSaveMs >= 1500 || _lastPetSaveMs == 0)
+                {
+                    _lastPetSaveMs = now;
+                    SaveConfig();
+                }
+                if (_config.PetSoundOn)
+                    PlayPetSound();
+                ShowBubbleFrom(WalletFormat.Effective(_config.PetLines, WalletFormat.DefaultPetLines), 1600, "pet");
+                RefreshMenuState();
+            }
+            catch (Exception ex)
+            {
+                Log.Error("OnBallPet", ex);
+            }
+        }
+
+        /// <summary>
+        /// 捏捏音效（SPEC 3.5.3 + Lead m00576）：host.petSoundFile 最优先（宿主自举复制到 %USERPROFILE%\.dsh\dsh-pet\pet.wav 并告诉我们），
+        /// 其次是 %APPDATA%\dsh-pet\pet.wav，最后回落 host.soundFile；都没有就静音。
+        /// </summary>
+        private void PlayPetSound()
+        {
+            try
+            {
+                string path = null;
+                if (_state.Host != null && Util.IsVisibleText(_state.Host.PetSoundFile) && File.Exists(_state.Host.PetSoundFile))
+                {
+                    path = _state.Host.PetSoundFile;
+                }
+                else
+                {
+                    string petWav = System.IO.Path.Combine(Paths.AppDataDir, "pet.wav");
+                    if (File.Exists(petWav))
+                        path = petWav;
+                    else if (_state.Host != null && Util.IsVisibleText(_state.Host.SoundFile) && File.Exists(_state.Host.SoundFile))
+                        path = _state.Host.SoundFile;
+                }
+                if (path == null)
+                    return;
+                if (!Native.PlayWavSlot(path))
+                    Native.PlayWav(path); // MCI 不通时的兜底，宁可打断也别哑
+            }
+            catch (Exception ex)
+            {
+                Log.Error("PlayPetSound", ex);
+            }
+        }
+
+        /// <summary>从候选台词里挑一条能用的弹出来（取不到占位符值的整条跳过）。</summary>
+        private void ShowBubbleFrom(string[] lines, int durationMs, string source)
+        {
+            if (!_config.BubbleOn || _bubble == null)
+                return;
+            if (_panel != null && _panel.IsPanelShown)
+                return; // SPEC：面板出现时不弹新气泡，免得两个窗口打架
+            if (_ball == null || !_ball.BallVisible)
+                return;
+            string text = WalletFormat.Pick(lines, _state, _online, _rng);
+            if (text == null)
+                return;
+            _lastBubbleMs = Util.NowMs();
+            _bubble.ShowLine(text, new Rectangle(_ball.Location, _ball.Size), durationMs);
+            // 日志带上来源池标签，自测时一眼能看出"question 状态抽的是 question 池"
+            Log.Info("气泡[" + source + "]：" + text);
+        }
+
+        /// <summary>idle 连续超过 bubbleIdleSec 就闲聊一句，之后按同样间隔重复；running 时不闲聊。</summary>
+        private void MaybeIdleBubble()
+        {
+            if (!_config.BubbleOn || _bubble == null)
+                return;
+            long now = Util.NowMs();
+            bool idle = _online && (_state.StatusOrIdle == "idle") && !_panel.IsPanelShown;
+            if (!idle)
+            {
+                _idleSinceMs = 0;
+                return;
+            }
+            if (_idleSinceMs == 0)
+            {
+                _idleSinceMs = now;
+                return;
+            }
+            long interval = (long)Math.Max(30, _config.BubbleIdleSec) * 1000L;
+            if (now - _idleSinceMs < interval)
+                return;
+            if (_lastBubbleMs > 0 && now - _lastBubbleMs < interval)
+                return;
+            ShowBubbleFrom(WalletFormat.Effective(_config.Bubbles, WalletFormat.DefaultBubbles), 3200, "idle");
+        }
+
         // ───────────────────── 定时动画 / 面板显隐 ─────────────────────
 
         private void OnTickTimerTick(object sender, EventArgs e)
@@ -283,6 +440,16 @@ namespace DshPetFloat
                 {
                     _panel.HidePanel();
                 }
+
+                // v1.1：气泡跟随小球；面板一出现就把气泡收掉（别挡着面板），另外处理 idle 闲聊
+                if (_bubble != null)
+                {
+                    if (_panel.IsPanelShown && _bubble.IsShown)
+                        _bubble.HideBubble();
+                    else
+                        _bubble.Tick(_animMs, ballBounds);
+                }
+                MaybeIdleBubble();
 
                 UpdateTrayIconIfNeeded();
             }
@@ -615,6 +782,15 @@ namespace DshPetFloat
             _menuMute.Click += delegate { ToggleMute(); };
             menu.Items.Add(_menuMute);
 
+            _menuBubble = new ToolStripMenuItem("气泡开/关");
+            _menuBubble.Checked = _config.BubbleOn;
+            _menuBubble.Click += delegate { ToggleBubble(); };
+            menu.Items.Add(_menuBubble);
+
+            _menuPetCount = new ToolStripMenuItem(PetCountText());
+            _menuPetCount.Click += delegate { ResetPetCount(); };
+            menu.Items.Add(_menuPetCount);
+
             _menuAuto = new ToolStripMenuItem("开机自启");
             _menuAuto.Checked = _config.AutoStart;
             _menuAuto.Click += delegate { ToggleAutoStart(); };
@@ -640,6 +816,33 @@ namespace DshPetFloat
                 _menuAuto.Checked = _config.AutoStart;
             if (_menuHide != null)
                 _menuHide.Text = _ball != null && _ball.BallVisible ? "隐藏小球" : "显示小球";
+            if (_menuBubble != null)
+                _menuBubble.Checked = _config.BubbleOn;
+            if (_menuPetCount != null)
+                _menuPetCount.Text = PetCountText();
+        }
+
+        private string PetCountText()
+        {
+            return "被捏过 " + _config.PetCount + " 次（清零）";
+        }
+
+        private void ToggleBubble()
+        {
+            _config.BubbleOn = !_config.BubbleOn;
+            if (!_config.BubbleOn && _bubble != null)
+                _bubble.HideBubble();
+            SaveConfig();
+            RefreshMenuState();
+            Log.Info("气泡 = " + _config.BubbleOn);
+        }
+
+        private void ResetPetCount()
+        {
+            _config.PetCount = 0;
+            SaveConfig();
+            RefreshMenuState();
+            Log.Info("捏捏计数已清零");
         }
 
         private void OnTrayMouseClick(object sender, MouseEventArgs e)
@@ -703,6 +906,112 @@ namespace DshPetFloat
                     ExitApp(false);
                 };
                 t2.Start();
+            };
+            t.Start();
+        }
+
+        /// <summary>隐藏开关：捏两下 + 弹气泡，1.6 秒后退出，用来回归气泡窗口与挤压动画不崩。</summary>
+        private void StartSelftestPet()
+        {
+            Log.Info("自测：0.7 秒后捏两下并弹气泡");
+            Timer t = new Timer();
+            t.Interval = 700;
+            t.Tick += delegate
+            {
+                t.Stop();
+                t.Dispose();
+                OnBallPet();
+                OnBallPet();
+                ShowBubbleFrom(WalletFormat.Effective(_config.Bubbles, WalletFormat.DefaultBubbles), 1500, "selftest");
+                Timer t2 = new Timer();
+                t2.Interval = 900;
+                t2.Tick += delegate
+                {
+                    t2.Stop();
+                    t2.Dispose();
+                    Log.Info("自测：退出（气泡/捏捏回归结束）");
+                    ExitApp(false);
+                };
+                t2.Start();
+            };
+            t.Start();
+        }
+
+        /// <summary>
+        /// 隐藏开关：验证 v1.1.1 的按压语义——短按只 open（不计数/不弹台词），按住 ≥600ms 每 400ms 揉一次。
+        /// 时间线：0.5s 模拟一次 150ms 短按 → 0.9s 开始模拟按住 → 1.6s / 2.05s 观察揉计数 → 2.35s 松手退出。
+        /// </summary>
+        private void StartSelftestPress()
+        {
+            Log.Info("自测：短按/揉捏语义验证开始");
+            Timer t = new Timer();
+            t.Interval = 500;
+            t.Tick += delegate
+            {
+                t.Stop();
+                t.Dispose();
+                int before = _config.PetCount;
+                _ball.TestShortClick(150);
+                Log.Info("自测[短按] petCount " + before + " -> " + _config.PetCount + "（应不变）");
+                _ball.TestBeginHold();
+
+                Timer t2 = new Timer();
+                t2.Interval = 700; // 累计按住 700ms，Tick 应已触发第 1 次揉
+                t2.Tick += delegate
+                {
+                    t2.Stop();
+                    t2.Dispose();
+                    Log.Info("自测[揉捏] 按住约 700ms 后 petCount=" + _config.PetCount + "（应比短按后 +1）");
+
+                    Timer t3 = new Timer();
+                    t3.Interval = 450; // 累计 1150ms，应触发第 2 次揉
+                    t3.Tick += delegate
+                    {
+                        t3.Stop();
+                        t3.Dispose();
+                        Log.Info("自测[揉捏] 按住约 1150ms 后 petCount=" + _config.PetCount + "（应再 +1）");
+                        _ball.TestEndHold();
+                        Log.Info("自测[揉捏] 松手完成，petCount=" + _config.PetCount + "（松手不应触发 open）");
+
+                        Timer t4 = new Timer();
+                        t4.Interval = 300;
+                        t4.Tick += delegate
+                        {
+                            t4.Stop();
+                            t4.Dispose();
+                            Log.Info("自测：按压语义验证结束，退出");
+                            ExitApp(false);
+                        };
+                        t4.Start();
+                    };
+                    t3.Start();
+                };
+                t2.Start();
+            };
+            t.Start();
+        }
+
+        /// <summary>隐藏开关：依次触发 question/approval/done/error 四个状态气泡，验证各抽各的池。</summary>
+        private void StartSelftestStatus()
+        {
+            Log.Info("自测：状态分池气泡验证开始");
+            string[] order = new string[] { "waiting-question", "waiting-approval", "done", "error" };
+            int index = 0;
+            Timer t = new Timer();
+            t.Interval = 400;
+            t.Tick += delegate
+            {
+                if (index >= order.Length)
+                {
+                    t.Stop();
+                    t.Dispose();
+                    Log.Info("自测：状态分池气泡验证结束，退出");
+                    ExitApp(false);
+                    return;
+                }
+                string status = order[index++];
+                Log.Info("自测：触发状态 " + status);
+                OnStatusBubble(status);
             };
             t.Start();
         }
@@ -810,6 +1119,8 @@ namespace DshPetFloat
 
             try
             {
+                if (_bubble != null)
+                    _bubble.Close();
                 if (_panel != null)
                     _panel.Close();
                 if (_ball != null)
@@ -823,6 +1134,7 @@ namespace DshPetFloat
                 Log.Error("关闭窗口", ex);
             }
 
+            Native.CloseWavSlots();
             ExitThread();
         }
 

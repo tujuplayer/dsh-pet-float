@@ -122,7 +122,40 @@ def gen_ah(path):
     print("wrote", path, os.path.getsize(path), "bytes")
 
 
+def gen_pet_sound(path):
+    """捏捏音效：一声很短的「啵啾」——低频下滑 + 带噪声的软弹，0.18s。"""
+    import random
+    sr = 44100
+    dur = 0.18
+    n = int(sr * dur)
+    rnd = random.Random(20261104)
+    frames = bytearray()
+    phase = 0.0
+    for i in range(n):
+        t = i / n
+        # 音高：180Hz 快速滑到 90Hz（捏扁再回弹的手感）
+        f0 = 180.0 * (1.0 - t) ** 1.6 + 86.0
+        phase += 2 * math.pi * f0 / sr
+        body = math.sin(phase) * 0.7 + math.sin(2 * phase) * 0.18 + math.sin(3 * phase) * 0.06
+        # 噪声成分：只在开头一点点，做出「噗」的摩擦感
+        noise = (rnd.random() * 2 - 1) * 0.35 * max(0.0, 1.0 - t * 7.0)
+        if t < 0.012:
+            env = t / 0.012
+        else:
+            env = math.exp(-5.2 * (t - 0.012))
+        s = 0.34 * env * (body + noise)
+        s = max(-1.0, min(1.0, s))
+        frames += struct.pack("<h", int(round(s * 32767 * 0.9)))
+    with wave.open(path, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(bytes(frames))
+    print("wrote", path, os.path.getsize(path), "bytes")
+
+
 if __name__ == "__main__":
     os.makedirs(ASSETS, exist_ok=True)
     gen_pet(os.path.join(ASSETS, "pet.png"))
     gen_ah(os.path.join(ASSETS, "ah.wav"))
+    gen_pet_sound(os.path.join(ASSETS, "pet.wav"))

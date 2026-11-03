@@ -111,6 +111,11 @@ function makeHost() {
     async stop() {
       if (server) await new Promise((resolve) => server.close(resolve))
       server = null
+      // 必须跑插件的清理器：否则上一个 host 的心跳/钱包定时器会继续往同一个
+      // STATE_FILE 写旧快照，把下一个用例刚写的内容盖掉（曾让测试 5 偶发失败）。
+      for (const cleanup of cleanups.splice(0)) {
+        try { cleanup() } catch (err) {}
+      }
     },
   }
 }
@@ -383,6 +388,61 @@ test('没有伴侣 exe 时插件不报错也不写 quit.flag', async () => {
     assert.equal(fs.existsSync(flag), false)
     const ping = await request(host.webServer.port, { path: '/dsh-pet/ping' })
     assert.equal(ping.status, 200)
+  } finally {
+    await host.stop()
+  }
+})
+
+test('钱包：账号服务给余额 → 状态文件带 wallet，/dsh-pet/wallet.json 可读', async () => {
+  const host = makeHost()
+  // 假 deepseekAccount 服务：只有赠金（真实场景里新用户常见）
+  host.services.set('deepseekAccount', {
+    getState: () => ({ userId: 'user-1' }),
+    getBalance: async () => ({
+      status: 'ready',
+      value: [],
+      bonusWallets: [{ currency: 'CNY', balance: 12.5 }],
+    }),
+  })
+  plugin.apply(host.ctx)
+  await host.start()
+  try {
+    const port = host.webServer.port
+    const wallet = await request(port, { method: 'POST', path: '/dsh-pet/wallet.json' })
+    assert.equal(wallet.status, 200)
+    assert.equal(wallet.json.ok, true)
+    assert.equal(wallet.json.balance, 12.5)
+    assert.equal(wallet.json.currency, 'CNY')
+    assert.equal(wallet.json.source, 'account')
+
+    // 状态文件里也要有 wallet（伴侣只读状态文件）
+    await sleep(300)
+    const state = readState()
+    assert.equal(state.wallet.ok, true)
+    assert.equal(state.wallet.balance, 12.5)
+    assert.equal(typeof state.wallet.todaySpend, 'number')
+    assert.equal(typeof state.wallet.todayTokens, 'number')
+    assert.equal(state.wallet.partial, true, '测试在白天跑，属于"非当天从头观测"⇒ partial')
+  } finally {
+    await host.stop()
+  }
+})
+
+test('钱包：没有账号服务也没有 API key → ok:false 但不影响状态文件其他字段', async () => {
+  const host = makeHost()
+  plugin.apply(host.ctx)
+  await host.start()
+  try {
+    const port = host.webServer.port
+    const wallet = await request(port, { method: 'POST', path: '/dsh-pet/wallet.json' })
+    assert.equal(wallet.status, 200)
+    assert.equal(wallet.json.ok, false)
+    assert.ok(String(wallet.json.error || '').length > 0, '应带一行失败原因')
+    await sleep(250)
+    const state = readState()
+    assert.equal(state.wallet.ok, false)
+    assert.equal(state.active, null)
+    assert.ok(state.host.petSoundFile !== undefined, 'host 里应有 petSoundFile 字段')
   } finally {
     await host.stop()
   }

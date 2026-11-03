@@ -444,6 +444,59 @@ namespace DshPetFloat
             }
         }
 
+        // ── 捏捏音效（SPEC 3.5.3）：PlaySound 是单通道的，连续快捏会把上一声切断；
+        // 这里用 MCI 开两个别名通道轮流播，最多同时 2 个实例，也不会打断 PlaySound 播的状态音。
+        [DllImport("winmm.dll", CharSet = CharSet.Unicode)]
+        private static extern int mciSendString(string command, System.Text.StringBuilder returnString, int returnLength, IntPtr hwndCallback);
+
+        private static readonly string[] PetSoundAliases = new string[] { "dshpet_a", "dshpet_b" };
+        private static int _nextPetSlot;
+
+        /// <summary>用独立的 MCI 通道播捏捏音效；成功返回 true。</summary>
+        public static bool PlayWavSlot(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return false;
+            try
+            {
+                if (!System.IO.File.Exists(path))
+                    return false;
+                for (int attempt = 0; attempt < 2; attempt++)
+                {
+                    int slot = (_nextPetSlot + attempt) % PetSoundAliases.Length;
+                    string alias = PetSoundAliases[slot];
+                    // 先关掉这个通道上一次的声音（它本来也快播完了），再 open+play
+                    mciSendString("close " + alias, null, 0, IntPtr.Zero);
+                    string open = "open \"" + path + "\" type waveaudio alias " + alias;
+                    int rc = mciSendString(open, null, 0, IntPtr.Zero);
+                    if (rc != 0)
+                        continue;
+                    mciSendString("play " + alias + " from 0", null, 0, IntPtr.Zero);
+                    _nextPetSlot = (slot + 1) % PetSoundAliases.Length;
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error("PlayWavSlot", ex);
+            }
+            return false;
+        }
+
+        /// <summary>退出时把两个通道关掉，别让 winmm 里留着句柄。</summary>
+        public static void CloseWavSlots()
+        {
+            try
+            {
+                for (int i = 0; i < PetSoundAliases.Length; i++)
+                    mciSendString("close " + PetSoundAliases[i], null, 0, IntPtr.Zero);
+            }
+            catch (Exception ex)
+            {
+                Log.Error("CloseWavSlots", ex);
+            }
+        }
+
         public static void PlayWav(string path)
         {
             if (string.IsNullOrEmpty(path))

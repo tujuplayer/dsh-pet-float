@@ -319,6 +319,8 @@ namespace DshPetFloat
             args.SoundOn = _soundOn;
             args.HoverKey = _hoverKey;
             args.Notice = _notice;
+            // v1.1 钱包行：只在状态未超时（online）时信任 wallet 字段（SPEC 3.5.1）
+            args.WalletText = WalletFormat.PanelLine(_state, _online);
             args.AnimMs = _animMs;
             args.Scale = scale;
 

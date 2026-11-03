@@ -13,8 +13,11 @@ This plugin puts a small character ball on top of your desktop and keeps it hone
 - **Always-on-top ball** (120 px, per-pixel alpha, click-through on the transparent pixels) you can drag anywhere; the position is remembered.
 - **Hover → status panel**, styled like a music player: session title, a status chip (思考中 / 调用工具 / 等你回答 / 等你授权 / 本轮结束 / 出错 / 离线), the one-line thinking summary of the running step, the current question with its options when the agent asks you something, a segmented progress bar, elapsed time, round · step · token count.
 - **"啊" only when it matters**: a short alert sound on *needs you* (a question, an approval request) and on *turn finished*. Nothing while idle, nothing while the turn is just running normally. Every alert fires once per event, so it does not repeat.
+- **Squeeze it** (v1.1): click or hold the ball and it squashes and springs back with a soft "boop"; hold it to keep kneading. The number of squeezes is remembered.
+- **Wallet at a glance** (v1.1): the panel shows your live account balance, how much today has cost, and today's token count — balance comes from the DSH account service (or `DEEPSEEK_API_KEY`), spend is measured as the day's balance drop, never a price-table guess.
+- **Little text bubble** (v1.1): a speech bubble pops next to the ball — a random quip when idle, a line when you squeeze it, a reminder when it needs you, and occasionally your balance in plain words. Fully customizable pool with `{balance}` `{today}` `{title}` `{tokens}` placeholders.
 - **Click the ball → DSH comes to front** and switches to that session.
-- **Tray icon** with open / hide / mute / quit, and an optional start-with-Windows entry.
+- **Tray icon** with open / hide / mute / bubble toggle / quit, and an optional start-with-Windows entry.
 
 | 正在运行 | 等你回答 |
 | --- | --- |
@@ -50,13 +53,16 @@ dsh plugin --profile web add "https://github.com/tujuplayer/dsh-pet-float/releas
 | --- | --- |
 | 悬停小球 | 弹出状态面板（鼠标移开约 0.6 s 收起） |
 | 单击小球 | 把 DSH 窗口提到最前，并切到面板里显示的那个会话 |
+| **捏小球**（快速点 / 按住揉） | 球被压扁再弹回来 + 一声「啵啾」+ 一句台词泡；按住会连续揉 |
 | 拖动小球 | 移动位置，松手后记住（写入 `%APPDATA%\dsh-pet\config.json`） |
-| 右键小球 / 托盘图标 | 菜单：打开 DSH、显示/隐藏、静音、开机自启、退出 |
+| 右键小球 / 托盘图标 | 菜单：打开 DSH、显示/隐藏、静音、气泡开关、开机自启、退出 |
 | 面板上的「打开」 | 同单击 |
 | 面板上的「静音」 | 关掉提示音（仍保留状态显示） |
 | 面板上的「×」 | 本次收起面板 |
 
 状态环颜色：蓝=思考中、青=调用工具、橙=等你回答/授权、绿=本轮结束、红=出错、灰=离线。
+
+面板除了状态，还会显示一行钱包（v1.1）：`余额 ¥77.72 · 今日 ¥0.12 · 15.2万 tokens`。余额来自 DSH 账号服务（没登录账号时用 `DEEPSEEK_API_KEY` 查），「今日」是当天余额实际下降的额度，不是按价格表估算；如果当天不是从 0 点就开始盯着的，会显示成 `今日 ≥¥0.12`。
 
 ## When it makes a sound / 什么时候会"啊"
 
@@ -74,15 +80,16 @@ dsh plugin --profile web add "https://github.com/tujuplayer/dsh-pet-float/releas
 ## Customize / 自定义
 
 - 换形象：把图片放到 `%USERPROFILE%\.dsh\dsh-pet\avatar.png`（正方形、透明底最好，512 px 起）。
-- 换提示音：`%USERPROFILE%\.dsh\dsh-pet\sound.wav`。
-- 也可以用环境变量 `DSH_PET_AVATAR` / `DSH_PET_SOUND` 直接指到任意路径。
-- 行为开关在 `%APPDATA%\dsh-pet\config.json`：`{ "posX": -1, "posY": -1, "scale": 1, "soundOn": true, "endSoundOn": true, "clickOpens": true, "hidePanelMs": 600, "autoStart": false }`（`-1` 表示默认屏幕右下角）。
+- 换提示音：`%USERPROFILE%\.dsh\dsh-pet\sound.wav`；捏捏音效：`%USERPROFILE%\.dsh\dsh-pet\pet.wav`。
+- 也可以用环境变量 `DSH_PET_AVATAR` / `DSH_PET_SOUND` / `DSH_PET_PET_SOUND` 直接指到任意路径。
+- 行为开关在 `%APPDATA%\dsh-pet\config.json`：`{ "posX": -1, "posY": -1, "scale": 1, "soundOn": true, "endSoundOn": true, "clickOpens": true, "hidePanelMs": 600, "autoStart": false, "bubbleOn": true, "bubbleIdleSec": 240, "petSoundOn": true, "petCount": 0, "bubbles": [], "petLines": [] }`（`-1` 表示默认屏幕右下角）。
+- 台词池：`bubbles`（闲聊/状态）与 `petLines`（捏捏）留空数组就用内置默认；支持占位符 `{balance}` 余额、`{today}` 今日花费、`{title}` 会话标题、`{tokens}` 今日 token，取不到值的台词会被跳过。
 
 ## How it works / 实现方式
 
 两个进程，一个状态文件：
 
-1. **宿主插件** (`lib/index.js`, `lib/pet.mjs`) 跟着 DSH 的 host 进程跑，订阅 `session/event`、`agent/assistant-stream`，把当前会话的状态（标题、状态、思考摘要、问题与选项、轮次/步数/token、待处理事件）合并成快照，每 200 ms 增量写一次 `%USERPROFILE%\.dsh\.dshp-state.json`；变化时追加事件，供伴侣去重播放提示音。
+1. **宿主插件** (`lib/index.js`, `lib/pet.mjs`, `lib/wallet.mjs`) 跟着 DSH 的 host 进程跑，订阅 `session/event`、`agent/assistant-stream`，把当前会话的状态（标题、状态、思考摘要、问题与选项、轮次/步数/token、待处理事件）合并成快照，每 200 ms 增量写一次 `%USERPROFILE%\.dsh\.dshp-state.json`；变化时追加事件，供伴侣去重播放提示音。钱包每 60 s 拉一次余额（每轮结束再多拉一次），当天基准与今日 token 存在 `%USERPROFILE%\.dsh\.dshp-wallet.json`，DSH 重启不丢。
 2. **桌面伴侣** (`DshPetFloat.exe`, C# WinForms + GDI+，源码在 `companion/`) 由插件拉起，轮询状态文件画球与面板；点击后写 `%USERPROFILE%\.dsh\.dshp-cmd.json`。
 3. **页面桥** (`assets/pet-bridge.js`) 由插件注入 DSH 页面：因为会话切换是 React state、没有 URL 路由，桥用 `[class*="_sessionRow"]` / `[class*="_title"]` 找到会话行并点击，同时把 DOM 里的思考摘要与标题回传给插件，作为宿主侧拿不到时的补充。
 

@@ -7,6 +7,7 @@
 | 文件 | 内容 | 生成方式 |
 | --- | --- | --- |
 | `assets/pet.png` | 默认角色图（蓝色小鱼） | `scripts/gen-assets.py` 用 Pillow 纯代码绘制 |
+| `assets/pet.wav` | 捏捏音效（0.18s「啵啾」） | `scripts/gen-assets.py` 程序合成（波形/包络全代码生成） |
 | `assets/ah.wav` | 默认「啊」提示音（约 0.55 s，44.1 kHz 单声道） | `scripts/gen-assets.py` 共振峰合成 |
 
 两者由本仓库作者创作并采用 CC0 1.0 通用（公共领域贡献）协议发布，可自由使用、修改、再分发。

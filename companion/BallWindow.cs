@@ -39,6 +39,24 @@ namespace DshPetFloat
         private long _pressMs;
         private int _moveCount;
 
+        // 捏捏（SPEC 3.5.3）：按下不动 600ms 内抬起 = 捏一次；按住 ≥600ms 不动 = 持续揉，每 400ms 一次
+        private const int ClickMaxMs = 600;
+        private const int RubHoldMs = 600;
+        private const int RubIntervalMs = 400;
+        private bool _rubbing;
+        // 仅 --selftest-press 使用：模拟按住时鼠标键并没有真的按下，靠这个标记跳过"松开"兜底
+        private bool _testHolding;
+        private bool _testHoverHit;
+        private long _lastRubMs;
+
+        // 挤压回弹动画（0 表示没在播）：压扁 80ms → 过冲 120ms → 回正 160ms
+        private const int SquashTotalMs = 360;
+        private long _squashStartMs;
+        private bool _squashHorizontal = true; // true=左右捏（x 压扁），false=上下捏
+        private float _squashX = 1f;
+        private float _squashY = 1f;
+        private bool _squashDirty;
+
         // 当前展示用状态
         private string _status = "idle";
         private string _phase = "idle";
@@ -51,6 +69,7 @@ namespace DshPetFloat
         public Action RightClicked;            // 右键（弹菜单）
         public Action<Point> PositionCommitted; // 拖动结束（保存位置）
         public Action Moved;                   // 拖动中每次移动（让面板实时跟随）
+        public Action Pet;                     // 被捏了一下（PetApp 记账、放音、弹台词）
 
         /// <summary>是否正在被拖动（面板据此保持显示并跟随）。</summary>
         public bool IsDragging
@@ -276,7 +295,7 @@ namespace DshPetFloat
 
             if (_pressed)
             {
-                if (!leftDown)
+                if (!_testHolding && !leftDown)
                 {
                     // 鼠标在窗口外松开，收不到 WM_LBUTTONUP，靠轮询兜底
                     EndPress();
@@ -296,8 +315,31 @@ namespace DshPetFloat
                 _dirty = true;
             }
 
+            // 按住不动：到 600ms 开始持续揉，之后每 400ms 再揉一次（SPEC 3.5.3）
+            if (_pressed && !_dragging)
+            {
+                long held = Util.NowMs() - _pressMs;
+                if (held >= RubHoldMs)
+                {
+                    long now = Util.NowMs();
+                    if (!_rubbing)
+                    {
+                        _rubbing = true;
+                        _lastRubMs = now;
+                        TriggerPet(cursor);
+                    }
+                    else if (now - _lastRubMs >= RubIntervalMs)
+                    {
+                        _lastRubMs = now;
+                        TriggerPet(cursor);
+                    }
+                }
+            }
+
+            UpdateSquash();
+
             // 拖动期间不要跑动画重绘：球的位图没有变化，重绘只是白烧 GDI+（之前卡顿的另一个来源）
-            if (!_dragging && NeedsAnimation())
+            if (!_dragging && (NeedsAnimation() || _squashDirty))
                 _dirty = true;
 
             RenderIfNeeded();
@@ -337,7 +379,77 @@ namespace DshPetFloat
         private bool NeedsAnimation()
         {
             // running 有呼吸/旋转弧；两个 waiting 有角标脉冲；其余是静态图
-            return _status == "running" || _status == "waiting-question" || _status == "waiting-approval";
+            if (_status == "running" || _status == "waiting-question" || _status == "waiting-approval")
+                return true;
+            return _squashStartMs > 0;
+        }
+
+        /// <summary>
+        /// 算当前挤压系数（1 = 没变形）。三段关键帧：压扁 80ms → 过冲到反方向 120ms → 回正 160ms。
+        /// 球体按 SquashX/SquashY 做非等比缩放，角标不参与（见 PetArt.RenderBall）。
+        /// </summary>
+        private void UpdateSquash()
+        {
+            if (_squashStartMs <= 0)
+                return;
+            long elapsed = Util.NowMs() - _squashStartMs;
+            if (elapsed < 0) elapsed = 0;
+            if (elapsed >= SquashTotalMs)
+            {
+                _squashStartMs = 0;
+                _squashX = 1f;
+                _squashY = 1f;
+                _squashDirty = true;
+                return;
+            }
+
+            const float amp = 0.12f;
+            float off; // 沿压扁轴的偏移量：正值=压扁
+            if (elapsed < 80)
+            {
+                off = amp * (elapsed / 80f);
+            }
+            else if (elapsed < 200)
+            {
+                // 过冲：从压到最扁反弹到反方向一点点（-0.35*amp），弹性感来自这里
+                float k = (elapsed - 80) / 120f;
+                off = amp - (amp + amp * 0.35f) * k;
+            }
+            else
+            {
+                float k = (elapsed - 200) / 160f;
+                off = -amp * 0.35f * (1f - k);
+            }
+
+            if (_squashHorizontal)
+            {
+                _squashX = 1f - off;
+                _squashY = 1f + off * 0.6f; // 压扁时另一轴略微鼓出来，模拟体积守恒
+            }
+            else
+            {
+                _squashX = 1f + off * 0.6f;
+                _squashY = 1f - off;
+            }
+            _squashDirty = true;
+        }
+
+        /// <summary>捏一下：按按下的位置决定压扁方向（横向捏就左右扁），然后通知 PetApp。</summary>
+        private void TriggerPet(Point screenPoint)
+        {
+            try
+            {
+                Point center = new Point(Left + Width / 2, Top + Height / 2);
+                _squashHorizontal = Math.Abs(screenPoint.X - center.X) >= Math.Abs(screenPoint.Y - center.Y);
+                _squashStartMs = Util.NowMs();
+                _squashDirty = true;
+                if (Pet != null)
+                    Pet();
+            }
+            catch (Exception ex)
+            {
+                Log.Error("BallWindow.TriggerPet", ex);
+            }
         }
 
         private void RenderIfNeeded()
@@ -367,7 +479,10 @@ namespace DshPetFloat
             args.AnimMs = _animMs;
             args.Scale = Scale;
             args.Avatar = _avatar;
+            args.SquashX = _squashX;
+            args.SquashY = _squashY;
 
+            _squashDirty = false;
             using (Bitmap bmp = PetArt.RenderBall(args))
             {
                 _surface.Update(Handle, bmp, Location, 1.0f);
@@ -419,6 +534,8 @@ namespace DshPetFloat
             _pressed = true;
             _dragging = false;
             _moveCount = 0;
+            _rubbing = false;
+            _lastRubMs = 0;
             _pressScreen = cursor;
             _pressWindow = Location;
             _pressMs = Util.NowMs();
@@ -443,14 +560,68 @@ namespace DshPetFloat
                 return;
             }
 
-            // 契约：<350ms 且位移 <4px 才算单击（位移由拖动逻辑保证）
             long elapsed = Util.NowMs() - _pressMs;
+            bool rubbed = _rubbing;
+            _rubbing = false;
+
+            // 揉过（按住 ≥600ms）松手：只算捏，绝不触发 open —— 不然想捏就会跳窗口
+            if (rubbed)
+            {
+                Log.Info("揉捏结束（按住 " + elapsed + "ms）");
+                return;
+            }
+
             Point cursor = Native.GetCursorPosPoint();
-            if (elapsed <= 350 && HitTestScreen(cursor))
+            if (!_testHoverHit && !HitTestScreen(cursor))
+                return;
+
+            // v1.1.1（Lead m00728）：<600ms 的短按 = 只 open（安静：不计数、不出声、不弹台词、不压扁）；
+            // 捏只由 ≥600ms 的按住揉触发，日常点球切回对话不会被"啵"一声打断。
+            if (elapsed <= ClickMaxMs)
             {
                 if (Clicked != null)
                     Clicked();
             }
+            else
+            {
+                // 理论上到不了这里（≥600ms 时 Tick 已经进入揉捏分支），留个日志便于排查
+                Log.Info("长按 " + elapsed + "ms 松手：未进入揉捏，忽略");
+            }
+        }
+
+        // ───────── v1.1.1 自测钩子（只有 --selftest-press 会调，正常运行路径不碰） ─────────
+
+        /// <summary>模拟按下不放：把 _pressMs 设为现在，之后 Tick 会按真实节奏进入揉捏。</summary>
+        public void TestBeginHold()
+        {
+            Point cursor = Native.GetCursorPosPoint();
+            _testHolding = true;
+            _pressed = true;
+            _dragging = false;
+            _moveCount = 0;
+            _rubbing = false;
+            _lastRubMs = 0;
+            _pressScreen = cursor;
+            _pressWindow = Location;
+            _pressMs = Util.NowMs();
+        }
+
+        /// <summary>结束模拟按住：走真实的 EndPress 判定（揉过就只算捏，不发 open）。</summary>
+        public void TestEndHold()
+        {
+            _testHolding = false;
+            _testHoverHit = true;
+            EndPress();
+            _testHoverHit = false;
+        }
+
+        /// <summary>模拟一次 heldMs 的短按：用于验证"短按不捏、只 open"。</summary>
+        public void TestShortClick(long heldMs)
+        {
+            TestBeginHold();
+            _testHolding = false;
+            _pressMs = Util.NowMs() - heldMs;
+            TestEndHold();
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

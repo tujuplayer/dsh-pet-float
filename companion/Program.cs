@@ -19,6 +19,16 @@ namespace DshPetFloat
     {
         private static Mutex _mutex;
 
+        // 隐藏自测开关用独立的 Mutex 名：真机上可能已经有正式实例在跑，
+        // 自测（--selftest-*）不该被它挡掉，也不该把正式实例顶掉。
+        private static string MutexName(PetOptions opt)
+        {
+            bool selftest = opt.SelftestOpen || opt.SelftestQuit || opt.SelftestPet
+                            || opt.SelftestPress || opt.SelftestStatus
+                            || opt.SelftestMutex || !string.IsNullOrEmpty(opt.SelftestRenderDir);
+            return selftest ? "Local" + "\\" + "DshPetFloat.selftest" : "Local" + "\\" + "DshPetFloat";
+        }
+
         [STAThread]
         private static int Main(string[] args)
         {
@@ -41,7 +51,7 @@ namespace DshPetFloat
 
             // 契约：单实例，已有实例时静默退出（退出码 0）
             bool createdNew;
-            _mutex = new Mutex(true, "Local\\DshPetFloat", out createdNew);
+            _mutex = new Mutex(true, MutexName(opt), out createdNew);
             if (!createdNew)
             {
                 Log.Info("已有 DshPetFloat 实例在运行，本次直接退出");
@@ -112,6 +122,18 @@ namespace DshPetFloat
                         break;
                     case "--selftest-quit":
                         opt.SelftestQuit = true;
+                        break;
+                    case "--selftest-pet":
+                        opt.SelftestPet = true;
+                        break;
+                    case "--selftest-mutex":
+                        opt.SelftestMutex = true;
+                        break;
+                    case "--selftest-press":
+                        opt.SelftestPress = true;
+                        break;
+                    case "--selftest-status":
+                        opt.SelftestStatus = true;
                         break;
                     case "--selftest-render":
                         if (i + 1 < args.Length)
@@ -192,6 +214,8 @@ namespace DshPetFloat
                 SaveBall(dir, "ball-done.png", "done", true, false, 0, manifest);
                 SaveBall(dir, "ball-error.png", "error", true, false, 0, manifest);
                 SaveBall(dir, "ball-offline.png", "idle", false, false, 0, manifest);
+                // v1.1 捏捏：横向压扁到 88%（SPEC 3.5.3 的 ±12%），角标不参与压扁
+                SaveBall(dir, "ball-squash.png", "waiting-question", true, false, 300, manifest, 0.88f, 1.12f);
 
                 PetState running = DemoState("running");
                 PetState question = DemoState("waiting-question");
@@ -206,6 +230,20 @@ namespace DshPetFloat
                 SavePanel(dir, "panel-sessions.png", running, true, true, 1.0f, "session:1", "", manifest);
                 SavePanel(dir, "panel-notice.png", running, true, false, 1.0f, "", "未找到 DSH 窗口", manifest);
                 SavePanel(dir, "panel-running-15x.png", running, true, false, 1.5f, "", "", manifest);
+                // v1.1 钱包行（SPEC 3.5.4）
+                SavePanel(dir, "panel-wallet.png", DemoState("running"), true, false, 1.0f, "", "", manifest);
+                // 钱包数据超过 10 分钟没刷新：今日花费前也要加 ≥（v1.1.1 Lead m00728 第 4 条）
+                PetState staleWallet = DemoState("running");
+                staleWallet.Wallet.Partial = false;
+                staleWallet.Wallet.UpdatedAt = Util.NowMs() - 11L * 60L * 1000L;
+                SavePanel(dir, "panel-wallet-stale.png", staleWallet, true, false, 1.0f, "", "", manifest);
+                // v1.1 气泡（SPEC 3.5.2）：朝下（球在下方）与朝上（球在上方）各一张
+                SaveBubble(dir, "bubble-basic.png", "余额 ¥77.72，今天已经花掉 ¥0.12 了。", true, manifest);
+                SaveBubble(dir, "bubble-below.png", "捏我干嘛，去写代码。", false, manifest);
+                // 长台词：验证超过 260 DIP 时自动换行（多行高度）
+                SaveBubble(dir, "bubble-long.png",
+                    "余额 ¥77.72，今天已经花掉 ¥0.12 了。要我帮你盯着点吗？再这么烧下去小肥鱼的钱包就要见底啦。",
+                    true, manifest);
 
                 File.WriteAllText(Path.Combine(dir, "render-manifest.txt"),
                     "渲染自测产物 " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\r\n\r\n"
@@ -223,6 +261,12 @@ namespace DshPetFloat
         private static void SaveBall(string dir, string name, string status, bool online, bool hover,
             double animMs, List<string> manifest)
         {
+            SaveBall(dir, name, status, online, hover, animMs, manifest, 1f, 1f);
+        }
+
+        private static void SaveBall(string dir, string name, string status, bool online, bool hover,
+            double animMs, List<string> manifest, float squashX, float squashY)
+        {
             BallArtArgs args = new BallArtArgs();
             args.Status = status;
             args.Phase = status == "running" ? "tool" : "waiting";
@@ -230,12 +274,15 @@ namespace DshPetFloat
             args.Hover = hover;
             args.AnimMs = animMs;
             args.Scale = 1.0f;
+            args.SquashX = squashX;
+            args.SquashY = squashY;
             using (Bitmap bmp = PetArt.RenderBall(args))
             {
                 string path = Path.Combine(dir, name);
                 bmp.Save(path, ImageFormat.Png);
                 manifest.Add(name + "  " + bmp.Width + "x" + bmp.Height + "  status=" + status
-                             + " online=" + online + " hover=" + hover + " anim=" + animMs);
+                             + " online=" + online + " hover=" + hover + " anim=" + animMs
+                             + " squash=" + squashX.ToString("0.##") + "/" + squashY.ToString("0.##"));
             }
         }
 
@@ -249,6 +296,7 @@ namespace DshPetFloat
             args.SoundOn = true;
             args.HoverKey = hoverKey ?? "";
             args.Notice = notice ?? "";
+            args.WalletText = WalletFormat.PanelLine(state, online);
             args.AnimMs = 950;
             args.Scale = scale;
 
@@ -265,7 +313,18 @@ namespace DshPetFloat
                 manifest.Add(name + "  " + bmp.Width + "x" + bmp.Height
                              + "  status=" + (state.Active != null ? state.Active.Status : "null")
                              + " online=" + online + " sessions=" + sessions + " hover=" + hoverKey
-                             + "  h=" + layout.HeightDip);
+                             + "  h=" + layout.HeightDip + "  wallet=\"" + args.WalletText + "\"");
+            }
+        }
+
+        private static void SaveBubble(string dir, string name, string text, bool tailDown, List<string> manifest)
+        {
+            using (Bitmap bmp = BubbleWindow.RenderBubbleBitmap(text, 1.0f, tailDown))
+            {
+                string path = Path.Combine(dir, name);
+                bmp.Save(path, ImageFormat.Png);
+                manifest.Add(name + "  " + bmp.Width + "x" + bmp.Height + "  tailDown=" + tailDown
+                             + "  text=" + text);
             }
         }
 
@@ -315,6 +374,19 @@ namespace DshPetFloat
                 a.Approval.Text = "要执行 taskkill /F /IM DshPetFloat.exe 清理测试实例，允许吗？";
             }
             st.Active = a;
+
+            // v1.1：钱包快照（余额/今日花费/今日 tokens），panel-wallet.png 用这份数据
+            WalletInfo w = new WalletInfo();
+            w.Ok = true;
+            w.Source = "account";
+            w.Currency = "CNY";
+            w.Balance = 77.72;
+            w.DayStart = 77.84;
+            w.TodaySpend = 0.12;
+            w.TodayTokens = 152340;
+            w.Partial = true; // 分日账本还没对齐 → 今日显示 ≥¥0.12
+            w.UpdatedAt = Util.NowMs();
+            st.Wallet = w;
 
             AddSession(st, "sess-1", "实现桌面宠物悬浮球的状态面板与交互", "running", true);
             AddSession(st, "sess-2", "修复页面桥 /dsh-pet/cmd-ack 的重复确认", "done", false);

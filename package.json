@@ -1,6 +1,6 @@
 {
   "name": "dsh-pet-float",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Turn the DeepSeek Harness pet into a desktop floating ball: always-on-top status ball, hover panel with live session progress, \"啊\" alert when the session needs you, one click back to the conversation.",
   "keywords": [
     "dsh",
@@ -18,6 +18,7 @@
     "lib",
     "assets/pet.png",
     "assets/ah.wav",
+    "assets/pet.wav",
     "assets/pet-bridge.js",
     "cordis.patch.yml",
     "companion",

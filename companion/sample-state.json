@@ -10,7 +10,8 @@
     "avatarFile": "",
     "soundFile": "",
     "stateFile": "C:\\Users\\TUJU\\.dsh\\.dshp-state.json",
-    "cmdFile": "C:\\Users\\TUJU\\.dsh\\.dshp-cmd.json"
+    "cmdFile": "C:\\Users\\TUJU\\.dsh\\.dshp-cmd.json",
+    "petSoundFile": ""
   },
   "page": {
     "alive": true,
@@ -35,19 +36,71 @@
     "waitingSince": 0,
     "question": null,
     "approval": null,
-    "todos": { "done": 2, "total": 5, "current": "面板排版" },
-    "tokens": { "turn": 12840, "total": 560000, "cached": 410000 },
+    "todos": {
+      "done": 2,
+      "total": 5,
+      "current": "面板排版"
+    },
+    "tokens": {
+      "turn": 12840,
+      "total": 560000,
+      "cached": 410000
+    },
     "lastText": "接下来把示例状态文件和 build.cmd 补上。",
     "updatedAt": 1793619360000
   },
   "sessions": [
-    { "key": "demo-running", "title": "实现桌面宠物悬浮球的状态面板与交互", "status": "running", "updatedAt": 1793619360000, "current": true },
-    { "key": "demo-done", "title": "修复页面桥 /dsh-pet/cmd-ack 的重复确认", "status": "done", "updatedAt": 1793619300000, "current": false },
-    { "key": "demo-idle-1", "title": "整理宿主插件路由表", "status": "idle", "updatedAt": 1793619000000, "current": false },
-    { "key": "demo-idle-2", "title": "写 README 与自测脚本", "status": "idle", "updatedAt": 1793618700000, "current": false }
+    {
+      "key": "demo-running",
+      "title": "实现桌面宠物悬浮球的状态面板与交互",
+      "status": "running",
+      "updatedAt": 1793619360000,
+      "current": true
+    },
+    {
+      "key": "demo-done",
+      "title": "修复页面桥 /dsh-pet/cmd-ack 的重复确认",
+      "status": "done",
+      "updatedAt": 1793619300000,
+      "current": false
+    },
+    {
+      "key": "demo-idle-1",
+      "title": "整理宿主插件路由表",
+      "status": "idle",
+      "updatedAt": 1793619000000,
+      "current": false
+    },
+    {
+      "key": "demo-idle-2",
+      "title": "写 README 与自测脚本",
+      "status": "idle",
+      "updatedAt": 1793618700000,
+      "current": false
+    }
   ],
   "events": [
-    { "id": "e-1001", "kind": "turn-done", "title": "完成「探针采集器」", "ts": 1793619300000 }
+    {
+      "id": "e-1001",
+      "kind": "turn-done",
+      "title": "完成「探针采集器」",
+      "ts": 1793619300000
+    }
   ],
-  "counts": { "pending": 0, "running": 1 }
+  "counts": {
+    "pending": 0,
+    "running": 1
+  },
+  "wallet": {
+    "ok": true,
+    "source": "account",
+    "currency": "CNY",
+    "balance": 77.72,
+    "dayStart": 77.84,
+    "todaySpend": 0.12,
+    "todayTokens": 152340,
+    "partial": true,
+    "updatedAt": 1793619360000,
+    "error": ""
+  }
 }

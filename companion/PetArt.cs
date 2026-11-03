@@ -207,6 +207,9 @@ namespace DshPetFloat
         public double AnimMs = 0;
         public float Scale = 1f;
         public Image Avatar;
+        // 捏捏（SPEC 3.5.3）：1 = 原样；压扁时一个方向 <1、另一个方向 >1
+        public float SquashX = 1f;
+        public float SquashY = 1f;
 
         public const float CanvasDip = 120f;
         public const float BallDip = 96f;
@@ -255,8 +258,49 @@ namespace DshPetFloat
             return _avatarCacheBmp;
         }
 
-        /// <summary>画悬浮球位图（尺寸 = 120 DIP * scale 的正方形，透明底）。</summary>
+        /// <summary>
+        /// 画悬浮球位图（尺寸 = 120 DIP * scale 的正方形，透明底）。
+        /// 球体先按原比例画好，再整体做非等比缩放实现"被捏扁"；角标/发丝不参与缩放。
+        /// </summary>
         public static Bitmap RenderBall(BallArtArgs a)
+        {
+            int size = Math.Max(16, (int)Math.Round(BallArtArgs.CanvasDip * a.Scale));
+            Bitmap bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
+            float sx = ClampSquash(a.SquashX);
+            float sy = ClampSquash(a.SquashY);
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                g.Clear(Color.Transparent);
+                using (Bitmap core = RenderBallCore(a))
+                {
+                    // 以画布中心（球心）为基准缩放：球心不动，视觉上就是被手指按了一下
+                    float w = size * sx;
+                    float h = size * sy;
+                    g.DrawImage(core, new RectangleF((size - w) * 0.5f, (size - h) * 0.5f, w, h));
+                }
+                DrawBallBadges(g, a, size);
+            }
+            // 离线整体半透明放最后，避免角标被单独压暗两次
+            if (!a.Online)
+                Draw.MultiplyAlpha(bmp, 0.5f);
+            return bmp;
+        }
+
+        /// <summary>挤压系数夹紧：坏值当 1，绝不把球画成一条线（捏捏动画的过冲也不会超界）。</summary>
+        private static float ClampSquash(float value)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value))
+                return 1f;
+            if (value < 0.7f) return 0.7f;
+            if (value > 1.3f) return 1.3f;
+            return value;
+        }
+
+        /// <summary>画球体本体（发光、状态环、头像或"鱼"字兜底、高光、内描边）。</summary>
+        private static Bitmap RenderBallCore(BallArtArgs a)
         {
             int size = Math.Max(16, (int)Math.Round(BallArtArgs.CanvasDip * a.Scale));
             Bitmap bmp = new Bitmap(size, size, PixelFormat.Format32bppArgb);
@@ -390,51 +434,63 @@ namespace DshPetFloat
                         innerRadius * 2f - 2f, innerRadius * 2f - 2f);
                 }
 
-                // 角标："?" 等你回答 / "!" 等你授权（脉冲）
-                if (a.Online && (a.Status == "waiting-question" || a.Status == "waiting-approval"))
-                {
-                    string mark = a.Status == "waiting-question" ? "?" : "!";
-                    float pulse = 1f + 0.10f * (float)Math.Sin(a.AnimMs / 300.0 * Math.PI * 2.0);
-                    float badgeR = 13f * a.Scale * hoverScale * pulse;
-                    float bx = center + radius * 0.70f;
-                    float by = center - radius * 0.70f;
-                    using (SolidBrush shadow = new SolidBrush(Color.FromArgb(70, 0, 0, 0)))
-                        g.FillEllipse(shadow, bx - badgeR + 1.5f * a.Scale, by - badgeR + 1.5f * a.Scale, badgeR * 2f, badgeR * 2f);
-                    using (SolidBrush badge = new SolidBrush(ring))
-                        g.FillEllipse(badge, bx - badgeR, by - badgeR, badgeR * 2f, badgeR * 2f);
-                    using (Pen border = new Pen(Color.FromArgb(230, 255, 255, 255), Math.Max(1f, 1.6f * a.Scale)))
-                        g.DrawEllipse(border, bx - badgeR, by - badgeR, badgeR * 2f, badgeR * 2f);
-                    using (Font font = new Font("Microsoft YaHei UI", Math.Max(9f, 16f * a.Scale * hoverScale), FontStyle.Bold, GraphicsUnit.Pixel))
-                    using (SolidBrush textBrush = new SolidBrush(Color.White))
-                    using (StringFormat sf = Draw.Format(ContentAlignment.MiddleCenter, false))
-                    {
-                        g.DrawString(mark, font, textBrush, new RectangleF(bx - badgeR, by - badgeR, badgeR * 2f, badgeR * 2f), sf);
-                    }
-                }
-
-                // done 状态加一个小对勾角标，和 running 的旋转弧区分开
-                if (a.Online && a.Status == "done")
-                {
-                    float badgeR = 12f * a.Scale * hoverScale;
-                    float bx = center + radius * 0.70f;
-                    float by = center - radius * 0.70f;
-                    using (SolidBrush badge = new SolidBrush(ring))
-                        g.FillEllipse(badge, bx - badgeR, by - badgeR, badgeR * 2f, badgeR * 2f);
-                    using (Pen pen = new Pen(Color.White, Math.Max(1.6f, 2.2f * a.Scale)))
-                    {
-                        pen.StartCap = LineCap.Round;
-                        pen.EndCap = LineCap.Round;
-                        PointF p0 = new PointF(bx - badgeR * 0.42f, by + badgeR * 0.02f);
-                        PointF p1 = new PointF(bx - badgeR * 0.1f, by + badgeR * 0.36f);
-                        PointF p2 = new PointF(bx + badgeR * 0.46f, by - badgeR * 0.34f);
-                        g.DrawLines(pen, new PointF[] { p0, p1, p2 });
-                    }
-                }
-
-                if (!a.Online)
-                    Draw.MultiplyAlpha(bmp, 0.5f);
             }
             return bmp;
+        }
+
+        /// <summary>
+        /// 角标单独画在压扁之后的画布上：「?」等你回答 / 「!」等你授权 / done 小对勾。
+        /// SPEC 3.5.3 要求发丝与角标不随捏捏变形，所以不能画在 RenderBallCore 里。
+        /// </summary>
+        private static void DrawBallBadges(Graphics g, BallArtArgs a, float size)
+        {
+            if (!a.Online)
+                return;
+            if (a.Status != "waiting-question" && a.Status != "waiting-approval" && a.Status != "done")
+                return;
+
+            float center = size / 2f;
+            float hoverScale = a.Hover ? 1.06f : 1.0f;
+            float radius = BallArtArgs.BallDip * a.Scale * 0.5f * hoverScale;
+            Color ring = PetPalette.StatusColor(a.Status);
+
+            if (a.Status == "waiting-question" || a.Status == "waiting-approval")
+            {
+                string mark = a.Status == "waiting-question" ? "?" : "!";
+                float pulse = 1f + 0.10f * (float)Math.Sin(a.AnimMs / 300.0 * Math.PI * 2.0);
+                float badgeR = 13f * a.Scale * hoverScale * pulse;
+                float bx = center + radius * 0.70f;
+                float by = center - radius * 0.70f;
+                using (SolidBrush shadow = new SolidBrush(Color.FromArgb(70, 0, 0, 0)))
+                    g.FillEllipse(shadow, bx - badgeR + 1.5f * a.Scale, by - badgeR + 1.5f * a.Scale, badgeR * 2f, badgeR * 2f);
+                using (SolidBrush badge = new SolidBrush(ring))
+                    g.FillEllipse(badge, bx - badgeR, by - badgeR, badgeR * 2f, badgeR * 2f);
+                using (Pen border = new Pen(Color.FromArgb(230, 255, 255, 255), Math.Max(1f, 1.6f * a.Scale)))
+                    g.DrawEllipse(border, bx - badgeR, by - badgeR, badgeR * 2f, badgeR * 2f);
+                using (Font font = new Font("Microsoft YaHei UI", Math.Max(9f, 16f * a.Scale * hoverScale), FontStyle.Bold, GraphicsUnit.Pixel))
+                using (SolidBrush textBrush = new SolidBrush(Color.White))
+                using (StringFormat sf = Draw.Format(ContentAlignment.MiddleCenter, false))
+                {
+                    g.DrawString(mark, font, textBrush, new RectangleF(bx - badgeR, by - badgeR, badgeR * 2f, badgeR * 2f), sf);
+                }
+                return;
+            }
+
+            // done 状态加一个小对勾角标，和 running 的旋转弧区分开
+            float doneR = 12f * a.Scale * hoverScale;
+            float dx = center + radius * 0.70f;
+            float dy = center - radius * 0.70f;
+            using (SolidBrush badge = new SolidBrush(ring))
+                g.FillEllipse(badge, dx - doneR, dy - doneR, doneR * 2f, doneR * 2f);
+            using (Pen pen = new Pen(Color.White, Math.Max(1.6f, 2.2f * a.Scale)))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                PointF p0 = new PointF(dx - doneR * 0.42f, dy + doneR * 0.02f);
+                PointF p1 = new PointF(dx - doneR * 0.1f, dy + doneR * 0.36f);
+                PointF p2 = new PointF(dx + doneR * 0.46f, dy - doneR * 0.34f);
+                g.DrawLines(pen, new PointF[] { p0, p1, p2 });
+            }
         }
 
         /// <summary>状态面板绘制参数（同时用于布局命中测试）。</summary>
@@ -446,6 +502,8 @@ namespace DshPetFloat
             public bool SoundOn = true;
             public string HoverKey = "";
             public string Notice = "";
+            // v1.1 钱包行文本（SPEC 3.5.4），由 PanelWindow 用 WalletFormat.PanelLine 算好
+            public string WalletText = "";
             public double AnimMs;
             public float Scale = 1f;
 
@@ -477,6 +535,7 @@ namespace DshPetFloat
             public RectangleF Options;
             public RectangleF ProgressTrack;
             public RectangleF Elapsed;
+            public RectangleF Wallet;
             public RectangleF FooterText;
             public RectangleF BtnOpen;
             public RectangleF BtnMute;
@@ -544,6 +603,10 @@ namespace DshPetFloat
             l.ProgressTrack = new RectangleF(padX, y, barW, 7f);
             l.Elapsed = new RectangleF(width - padX - 64f, y - 3f, 64f, 14f);
             y += 7f + 13f;
+
+            // v1.1 钱包行（SPEC 3.5.4）：进度条与底部小字之间，一行 11px 次要色
+            l.Wallet = new RectangleF(padX, y + 1f, contentW, 14f);
+            y += 15f;
 
             // 按钮收窄一点，把宽度让给底部那行「第 N 轮 · 第 M 步 · K tokens」，
             // 否则 320 DIP 下这行会被省略号吃掉 tokens 字样。
@@ -766,6 +829,17 @@ namespace DshPetFloat
                 using (StringFormat sf = Draw.Format(ContentAlignment.MiddleRight, false))
                 {
                     g.DrawString(elapsed, elapsedFont, elapsedBrush, Scaled(layout.Elapsed, s), sf);
+                }
+
+                // 4.5) 钱包行（v1.1）：取不到余额时这一行不画内容但保留行高，布局不跳动
+                if (Util.IsVisibleText(a.WalletText) && layout.Wallet.Height > 0f)
+                {
+                    using (Font walletFont = Draw.CreateFont(8.25f, FontStyle.Regular, s))
+                    using (SolidBrush walletBrush = new SolidBrush(PetPalette.TextSecondary))
+                    using (StringFormat sf = Draw.Format(ContentAlignment.MiddleLeft, true))
+                    {
+                        g.DrawString(a.WalletText, walletFont, walletBrush, Scaled(layout.Wallet, s), sf);
+                    }
                 }
 
                 // 5) 底部信息 + 按钮

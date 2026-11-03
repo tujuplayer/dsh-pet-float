@@ -22,6 +22,7 @@ rem csc.rsp 默认已引用 System.dll / System.Core.dll / System.Drawing.dll / Syste
   Model.cs ^
   PetArt.cs ^
   BallWindow.cs ^
+  BubbleWindow.cs ^
   PanelWindow.cs ^
   PetApp.cs ^
   Program.cs
