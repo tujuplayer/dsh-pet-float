@@ -82,8 +82,8 @@ dsh plugin --profile web add "https://github.com/tujuplayer/dsh-pet-float/releas
 - 换形象：把图片放到 `%USERPROFILE%\.dsh\dsh-pet\avatar.png`（正方形、透明底最好，512 px 起）。
 - 换提示音：`%USERPROFILE%\.dsh\dsh-pet\sound.wav`；捏捏音效：`%USERPROFILE%\.dsh\dsh-pet\pet.wav`。
 - 也可以用环境变量 `DSH_PET_AVATAR` / `DSH_PET_SOUND` / `DSH_PET_PET_SOUND` 直接指到任意路径。
-- 行为开关在 `%APPDATA%\dsh-pet\config.json`：`{ "posX": -1, "posY": -1, "scale": 1, "soundOn": true, "endSoundOn": true, "clickOpens": true, "hidePanelMs": 600, "autoStart": false, "bubbleOn": true, "bubbleIdleSec": 240, "petSoundOn": true, "petCount": 0, "bubbles": [], "petLines": [] }`（`-1` 表示默认屏幕右下角）。
-- 台词池：`bubbles`（闲聊/状态）与 `petLines`（捏捏）留空数组就用内置默认；支持占位符 `{balance}` 余额、`{today}` 今日花费、`{title}` 会话标题、`{tokens}` 今日 token，取不到值的台词会被跳过。
+- 行为开关在 `%APPDATA%\dsh-pet\config.json`：`{ "posX": -1, "posY": -1, "scale": 1, "soundOn": true, "endSoundOn": true, "clickOpens": true, "hidePanelMs": 600, "autoStart": false, "bubbleOn": true, "bubbleIdleSec": 240, "petSoundOn": true, "petCount": 0, "bubbles": [], "petLines": [], "statusLines": { "question": [], "approval": [], "done": [], "error": [] } }`（`-1` 表示默认屏幕右下角）。
+- 台词池：`bubbles`（空闲闲聊）、`petLines`（捏捏）、`statusLines{question,approval,done,error}`（状态变化时按状态分池抽，不会串味）——留空数组就用内置默认；支持占位符 `{balance}` 余额、`{today}` 今日花费、`{title}` 会话标题、`{tokens}` 今日 token，取不到值的台词会被跳过。
 
 ## How it works / 实现方式
 
