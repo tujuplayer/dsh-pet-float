@@ -1,0 +1,18 @@
+# ============================================================================
+# dsh-pet-float —— DSH bundle patch
+# ============================================================================
+# 把"宠物悬浮球"宿主插件插入 profile 的配置树。
+#
+# 安装（本机）：node dsh-pet/install.mjs
+# 卸载：       node dsh-pet/uninstall.mjs
+#
+# 桌面端（Electron）读的是 desktop profile，且该 profile 由客户端独占管理；
+# install.mjs 的做法是直接把包复制进
+#   %USERPROFILE%\.dsh\profiles\desktop\node_modules\dsh-pet-float
+# 并在 profile 的 package.json 的 dsh.profile.bundles 里追加 "dsh-pet-float"。
+# 缺包只会 warn 跳过（reportSkippedBundles），不会让 DSH 起不来。
+# ============================================================================
+
+- insert:
+    - id: dsh-pet-float
+      name: dsh-pet-float

@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "seq": 44,
+  "ts": 1793619360000,
+  "host": {
+    "version": "0.1.0",
+    "pid": 12345,
+    "electronPid": 12300,
+    "port": 8598,
+    "avatarFile": "",
+    "soundFile": "",
+    "stateFile": "C:\\Users\\TUJU\\.dsh\\.dshp-state.json",
+    "cmdFile": "C:\\Users\\TUJU\\.dsh\\.dshp-cmd.json"
+  },
+  "page": {
+    "alive": true,
+    "lastSeenTs": 1793619360000,
+    "title": "和小肥鱼聊天",
+    "visible": true,
+    "focused": false,
+    "href": "http://127.0.0.1:8598/"
+  },
+  "active": {
+    "key": "demo-done",
+    "title": "修复页面桥 /dsh-pet/cmd-ack 的重复确认",
+    "status": "done",
+    "phase": "done",
+    "detail": "已按契约给命令加确认去重，重复 ack 不再重复置前。",
+    "thinking": "",
+    "thinkingSource": "",
+    "turn": 2,
+    "step": 5,
+    "turnStartedAt": 1793619240000,
+    "elapsedMs": 120000,
+    "waitingSince": 0,
+    "question": null,
+    "approval": null,
+    "todos": { "done": 3, "total": 3, "current": "" },
+    "tokens": { "turn": 8320, "total": 552000, "cached": 405000 },
+    "lastText": "改完了，重复的 ack 已经不会再触发第二次置前。",
+    "updatedAt": 1793619360000
+  },
+  "sessions": [
+    { "key": "demo-done", "title": "修复页面桥 /dsh-pet/cmd-ack 的重复确认", "status": "done", "updatedAt": 1793619360000, "current": true },
+    { "key": "demo-running", "title": "实现桌面宠物悬浮球的状态面板与交互", "status": "running", "updatedAt": 1793619300000, "current": false }
+  ],
+  "events": [
+    { "id": "e-3001", "kind": "turn-done", "title": "修复页面桥 /dsh-pet/cmd-ack 的重复确认", "ts": 1793619360000 }
+  ],
+  "counts": { "pending": 0, "running": 1 }
+}

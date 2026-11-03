@@ -1,0 +1,8 @@
+node_modules/
+dist/
+publish/
+companion/bin/render/
+companion/bin/render2/
+companion/bin/render3/
+*.log
+.DS_Store

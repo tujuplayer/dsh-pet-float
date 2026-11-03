@@ -1,0 +1,5 @@
+*.exe binary -text
+*.wav binary -text
+*.png binary -text
+*.cmd -text
+build.cmd -text

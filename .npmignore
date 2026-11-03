@@ -1,0 +1,10 @@
+# 只在开发时用，不进 npm 包
+test/
+companion/bin/render/
+companion/bin/render2/
+companion/bin/render3/
+publish-src/
+tools/
+dist/
+publish/
+*.md.bak

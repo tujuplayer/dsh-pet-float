@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "seq": 43,
+  "ts": 1793619360000,
+  "host": {
+    "version": "0.1.0",
+    "pid": 12345,
+    "electronPid": 12300,
+    "port": 8598,
+    "avatarFile": "",
+    "soundFile": "",
+    "stateFile": "C:\\Users\\TUJU\\.dsh\\.dshp-state.json",
+    "cmdFile": "C:\\Users\\TUJU\\.dsh\\.dshp-cmd.json"
+  },
+  "page": {
+    "alive": true,
+    "lastSeenTs": 1793619360000,
+    "title": "和小肥鱼聊天",
+    "visible": true,
+    "focused": true,
+    "href": "http://127.0.0.1:8598/"
+  },
+  "active": {
+    "key": "demo-question",
+    "title": "实现桌面宠物悬浮球的状态面板与交互",
+    "status": "waiting-question",
+    "phase": "waiting",
+    "detail": "面板默认出现在悬浮球左侧，需要确认一下默认位置。",
+    "thinking": "位置策略会影响避屏边逻辑，先问清楚比较好。",
+    "thinkingSource": "reasoning",
+    "turn": 4,
+    "step": 2,
+    "turnStartedAt": 1793619300000,
+    "elapsedMs": 60000,
+    "waitingSince": 1793619345000,
+    "question": {
+      "text": "悬浮球默认贴在屏幕右下角，还是左上角？",
+      "options": ["右下角（推荐）", "左上角"]
+    },
+    "approval": null,
+    "todos": { "done": 1, "total": 3, "current": "确认默认位置" },
+    "tokens": { "turn": 4200, "total": 564200, "cached": 412000 },
+    "lastText": "需要你确认一下悬浮球的默认摆放位置，我再继续。",
+    "updatedAt": 1793619360000
+  },
+  "sessions": [
+    { "key": "demo-question", "title": "实现桌面宠物悬浮球的状态面板与交互", "status": "waiting-question", "updatedAt": 1793619360000, "current": true },
+    { "key": "demo-done", "title": "修复页面桥 /dsh-pet/cmd-ack 的重复确认", "status": "done", "updatedAt": 1793619300000, "current": false },
+    { "key": "demo-idle-1", "title": "整理宿主插件路由表", "status": "idle", "updatedAt": 1793619000000, "current": false }
+  ],
+  "events": [
+    { "id": "e-2001", "kind": "question", "title": "悬浮球默认贴哪里？", "ts": 1793619345000 }
+  ],
+  "counts": { "pending": 1, "running": 0 }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "dsh-pet-float",
+  "version": "1.0.1",
+  "description": "Turn the DeepSeek Harness pet into a desktop floating ball: always-on-top status ball, hover panel with live session progress, \"啊\" alert when the session needs you, one click back to the conversation.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "pet",
+    "floating-ball",
+    "desktop",
+    "windows",
+    "productivity"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "files": [
+    "lib",
+    "assets/pet.png",
+    "assets/ah.wav",
+    "assets/pet-bridge.js",
+    "cordis.patch.yml",
+    "companion",
+    "NOTICE.md"
+  ],
+  "scripts": {
+    "test": "node test/engine.test.mjs && node test/bridge.test.mjs && node test/host.test.mjs",
+    "assets": "python scripts/gen-assets.py"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TUJUplayer/dsh-pet-float.git"
+  },
+  "homepage": "https://github.com/TUJUplayer/dsh-pet-float",
+  "bugs": {
+    "url": "https://github.com/TUJUplayer/dsh-pet-float/issues"
+  },
+  "author": "TUJU (小肥鱼)",
+  "license": "MIT"
+}
