@@ -12,6 +12,8 @@ import {
   formatTokens,
   addTokens,
   applyBalance,
+  applySeed,
+  parseWhaleSeed,
   createWalletTracker,
   rollDay,
 } from '../lib/wallet.mjs'
@@ -179,4 +181,102 @@ test('跟踪器：并发 refresh 只打一次余额接口', async () => {
   assert.equal(a.balance, 42)
   assert.equal(b.balance, 42)
   assert.equal(c.balance, 42)
+})
+
+// —— v1.2.0：从鲸鱼挂件账本接上「今日花费」的当天基准 ——
+
+test('鲸鱼种子：只认当天，取 dayStart 与当天事件 token 之和', () => {
+  const now = at('2026-11-04', 12, 0)
+  const raw = {
+    date: '2026-11-04',
+    dayStart: 77.834642,
+    lastBalance: 74.59078,
+    events: [
+      { ts: 1, day: '2026-11-03', tokens: 999, cost: 1 },
+      { ts: 2, day: '2026-11-04', tokens: 121651, cost: 0.5 },
+      { ts: 3, day: '2026-11-04', tokens: 80000, cost: 0.2 },
+    ],
+  }
+  const seed = parseWhaleSeed(raw, now)
+  assert.equal(seed.dayStart, 77.834642)
+  // 不采纳鲸鱼的 token（口径不同）
+  assert.equal(seed.tokens, 0)
+  // 昨天/坏数据都不认
+  assert.equal(parseWhaleSeed({ ...raw, date: '2026-11-03' }, now), null)
+  assert.equal(parseWhaleSeed(null, now), null)
+  assert.equal(parseWhaleSeed({ date: '2026-11-04', dayStart: 'x' }, now), null)
+})
+
+test('applySeed：接上基准后今日花费立刻正确，且 partial 取消', () => {
+  const now = at('2026-11-04', 12, 0)
+  const store = {
+    version: 1,
+    date: '2026-11-04',
+    seededDay: '',
+    dayStart: 74.59078,
+    lastBalance: 74.59078,
+    lastBalanceAt: now,
+    todaySpend: 0,
+    todayTokens: 0,
+    partial: true,
+    currency: 'CNY',
+    ok: true,
+    source: 'account',
+    error: '',
+    updatedAt: now,
+    history: {},
+  }
+  const changed = applySeed(store, { date: '2026-11-04', dayStart: 77.834642, tokens: 201651 }, now)
+  assert.equal(changed, true)
+  assert.equal(store.dayStart, 77.834642)
+  assert.equal(store.todaySpend, 3.243862)
+  assert.equal(store.todayTokens, 0)
+  assert.equal(store.partial, false)
+  assert.equal(store.seededDay, '2026-11-04')
+  // 同一天不重复接（不会把后来的充值基准盖回去）
+  assert.equal(applySeed(store, { date: '2026-11-04', dayStart: 99, tokens: 1 }, now), false)
+  assert.equal(store.dayStart, 77.834642)
+})
+
+test('跟踪器：有鲸鱼种子时首次刷新就能算出真实今日花费', async () => {
+  const dir = tempDir()
+  const file = path.join(dir, 'w.json')
+  const now = at('2026-11-04', 12, 0)
+  const tracker = createWalletTracker({
+    file,
+    now: () => now,
+    readBalance: async () => ({ ok: true, balance: 74.59078 }),
+    seedSource: () => ({
+      date: '2026-11-04',
+      dayStart: 77.834642,
+      events: [{ day: '2026-11-04', tokens: 201651 }],
+    }),
+  })
+  const view = await tracker.refresh()
+  assert.equal(view.ok, true)
+  assert.equal(view.todaySpend, 3.243862)
+  assert.equal(view.partial, false)
+  // 落盘后重载不应丢掉基准
+  const again = createWalletTracker({
+    file,
+    now: () => now,
+    readBalance: async () => ({ ok: true, balance: 74.5 }),
+    seedSource: () => ({ date: '2026-11-04', dayStart: 77.834642, events: [] }),
+  })
+  const second = await again.refresh()
+  assert.ok(Math.abs(second.todaySpend - 3.334642) < 1e-6)
+})
+
+test('跟踪器：种子日期不是今天就不采纳', async () => {
+  const dir = tempDir()
+  const file = path.join(dir, 'w.json')
+  const tracker = createWalletTracker({
+    file,
+    now: () => at('2026-11-04', 12, 0),
+    readBalance: async () => ({ ok: true, balance: 50 }),
+    seedSource: () => ({ date: '2026-11-03', dayStart: 77.8, events: [] }),
+  })
+  const view = await tracker.refresh()
+  assert.equal(view.todaySpend, 0)
+  assert.equal(view.partial, true)
 })

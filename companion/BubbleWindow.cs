@@ -228,11 +228,10 @@ namespace DshPetFloat
             {
                 if (_sizePx.Width <= 0 || _sizePx.Height <= 0)
                     return;
-                if (!_lastShown)
-                {
-                    // 第一次显示前把尺寸/位置定好，避免先出现在 (0,0) 再跳过去
-                    UpdateGeometry();
-                }
+                // v1.2.0（Lead m00777 第 2 条）：每次都先重算几何。
+                // 之前只在"首次显示/尺寸变化"时算位置，窗口已显示而球被拖动时气泡就钉在原地不动了。
+                // UpdateGeometry 内部只在 Location 真的变化时才赋值，成本可以忽略。
+                UpdateGeometry();
 
                 float scale = Scale;
                 using (Bitmap bmp = RenderBubbleBitmap(_text, scale, _tailDown))

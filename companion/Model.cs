@@ -18,6 +18,8 @@ namespace DshPetFloat
         public bool SoundOn = true;
         public bool EndSoundOn = true;
         public bool ClickOpens = true;
+        // v1.2.0：单击语义。"pet"（默认）= 单击捏一下、双击才打开 DSH；"open" = 旧行为（单击直接打开）。
+        public string ClickAction = "pet";
         public int HidePanelMs = 600;
         public bool AutoStart = false;
 
@@ -58,6 +60,7 @@ namespace DshPetFloat
                 cfg.SoundOn = root.Bool("soundOn", true);
                 cfg.EndSoundOn = root.Bool("endSoundOn", true);
                 cfg.ClickOpens = root.Bool("clickOpens", true);
+                cfg.ClickAction = NormalizeClickAction(root.Str("clickAction", "pet"));
                 cfg.HidePanelMs = root.Int("hidePanelMs", 600);
                 cfg.AutoStart = root.Bool("autoStart", false);
 
@@ -99,6 +102,13 @@ namespace DshPetFloat
                 Log.Error("Config.Load", ex);
             }
             return cfg;
+        }
+
+        /// <summary>clickAction 只认 "pet" / "open"，别的值一律回落到 "pet"（默认更符合用户直觉）。</summary>
+        public static string NormalizeClickAction(string value)
+        {
+            string v = Util.TrimToEmpty(value).ToLowerInvariant();
+            return v == "open" ? "open" : "pet";
         }
 
         /// <summary>读台词数组：只收非空字符串、最多 20 条、每条截到 120 字，脏数据不炸。</summary>
@@ -143,6 +153,7 @@ namespace DshPetFloat
                 sb.Append("  \"soundOn\": ").Append(SoundOn ? "true" : "false").Append(",\r\n");
                 sb.Append("  \"endSoundOn\": ").Append(EndSoundOn ? "true" : "false").Append(",\r\n");
                 sb.Append("  \"clickOpens\": ").Append(ClickOpens ? "true" : "false").Append(",\r\n");
+                sb.Append("  \"clickAction\": \"").Append(NormalizeClickAction(ClickAction)).Append("\",\r\n");
                 sb.Append("  \"hidePanelMs\": ").Append(HidePanelMs.ToString(CultureInfo.InvariantCulture)).Append(",\r\n");
                 sb.Append("  \"autoStart\": ").Append(AutoStart ? "true" : "false").Append(",\r\n");
                 sb.Append("  \"bubbleOn\": ").Append(BubbleOn ? "true" : "false").Append(",\r\n");

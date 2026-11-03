@@ -51,12 +51,14 @@ dsh plugin --profile web add "https://github.com/tujuplayer/dsh-pet-float/releas
 
 | 操作 | 结果 |
 | --- | --- |
-| 悬停小球 | 弹出状态面板（鼠标移开约 0.6 s 收起） |
-| 单击小球 | 把 DSH 窗口提到最前，并切到面板里显示的那个会话 |
-| **捏小球**（快速点 / 按住揉） | 球被压扁再弹回来 + 一声「啵啾」+ 一句台词泡；按住会连续揉 |
+| 悬停小球 | 弹出状态面板（鼠标移开约 0.6 s 收起；气泡正在显示时先让气泡说完） |
+| 单击小球 | **捏一下**：球被压扁再弹回来 + 一声「啵啾」+ 一句台词泡（不再跳窗口） |
+| 双击小球 | 把 DSH 窗口提到最前，并切到当前显示的会话 |
+| 按住小球 ≥0.6 s | 连续揉，每 0.4 s 一次；松手不会跳窗口 |
+| 想恢复「单击就打开」 | 配置里把 `clickAction` 设成 `"open"` |
 | 拖动小球 | 移动位置，松手后记住（写入 `%APPDATA%\dsh-pet\config.json`） |
 | 右键小球 / 托盘图标 | 菜单：打开 DSH、显示/隐藏、静音、气泡开关、开机自启、退出 |
-| 面板上的「打开」 | 同单击 |
+| 面板上的「打开」 | 同双击（打开 DSH 并切到该会话） |
 | 面板上的「静音」 | 关掉提示音（仍保留状态显示） |
 | 面板上的「×」 | 本次收起面板 |
 
@@ -82,7 +84,7 @@ dsh plugin --profile web add "https://github.com/tujuplayer/dsh-pet-float/releas
 - 换形象：把图片放到 `%USERPROFILE%\.dsh\dsh-pet\avatar.png`（正方形、透明底最好，512 px 起）。
 - 换提示音：`%USERPROFILE%\.dsh\dsh-pet\sound.wav`；捏捏音效：`%USERPROFILE%\.dsh\dsh-pet\pet.wav`。
 - 也可以用环境变量 `DSH_PET_AVATAR` / `DSH_PET_SOUND` / `DSH_PET_PET_SOUND` 直接指到任意路径。
-- 行为开关在 `%APPDATA%\dsh-pet\config.json`：`{ "posX": -1, "posY": -1, "scale": 1, "soundOn": true, "endSoundOn": true, "clickOpens": true, "hidePanelMs": 600, "autoStart": false, "bubbleOn": true, "bubbleIdleSec": 240, "petSoundOn": true, "petCount": 0, "bubbles": [], "petLines": [], "statusLines": { "question": [], "approval": [], "done": [], "error": [] } }`（`-1` 表示默认屏幕右下角）。
+- 行为开关在 `%APPDATA%\dsh-pet\config.json`：`{ "posX": -1, "posY": -1, "scale": 1, "soundOn": true, "endSoundOn": true, "clickOpens": true, "clickAction": "pet", "hidePanelMs": 600, "autoStart": false, "bubbleOn": true, "bubbleIdleSec": 240, "petSoundOn": true, "petCount": 0, "bubbles": [], "petLines": [], "statusLines": { "question": [], "approval": [], "done": [], "error": [] } }`（`-1` 表示默认屏幕右下角）。
 - 台词池：`bubbles`（空闲闲聊）、`petLines`（捏捏）、`statusLines{question,approval,done,error}`（状态变化时按状态分池抽，不会串味）——留空数组就用内置默认；支持占位符 `{balance}` 余额、`{today}` 今日花费、`{title}` 会话标题、`{tokens}` 今日 token，取不到值的台词会被跳过。
 
 ## How it works / 实现方式

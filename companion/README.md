@@ -1,7 +1,7 @@
 # DSH 桌面宠物 · 桌面伴侣进程（DshPetFloat）
 
 小肥鱼的 DSH 桌面宠物悬浮球。这个目录是**桌面伴侣进程**：一个独立的 C# WinForms 小程序，
-常驻托盘、在桌面右下角画一颗状态气泡球，悬停弹出状态面板，点一下就切到 DSH。
+常驻托盘、在桌面右下角画一颗状态气泡球，悬停弹出状态面板，单击捏一下、双击切回 DSH。
 
 它自己**不采集任何数据**——DSH 宿主插件每 200ms 把状态写到 JSON 文件，伴侣只读文件、
 只画界面；用户点球想切会话时，伴侣往命令文件里写一条 `open`，宿主读到后再置前 DSH 窗口。
@@ -26,7 +26,7 @@ build.cmd
 
 ```
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /langversion:5 /target:winexe ^
-    /out:bin\DshPetFloat.exe BallWindow.cs Json.cs Model.cs Native.cs PanelWindow.cs PetApp.cs PetArt.cs Program.cs Util.cs
+    /out:bin\DshPetFloat.exe BallWindow.cs BubbleWindow.cs Json.cs Model.cs Native.cs PanelWindow.cs PetApp.cs PetArt.cs Program.cs Util.cs
 ```
 
 > 注意：只引用 .NET Framework 自带程序集（csc.rsp 默认已带 System / System.Drawing /
@@ -68,12 +68,14 @@ bin\DshPetFloat.exe --demo sample-state-done.json        :: done（已完成）
 | `--state <path>` | 覆盖状态文件路径（默认 `%USERPROFILE%\.dsh\.dshp-state.json`） |
 | `--cmd <path>` | 覆盖命令文件路径（默认 `%USERPROFILE%\.dsh\.dshp-cmd.json`） |
 | `--demo <path>` | 演示模式：读指定演示状态；不写命令、不写配置 |
-| `--selftest-render <dir>` | **隐藏自测开关**：不建窗口，离屏渲染 9 张球图 + 9 张面板图 + 3 张气泡图到目录，写 `render-manifest.txt`，然后退出 |
+| `--selftest-render <dir>` | **隐藏自测开关**：不建窗口，离屏渲染 9 张球图 + 10 张面板图 + 3 张气泡图（共 22 张 PNG）到目录，写 `render-manifest.txt`，然后退出 |
 | `--selftest-open` | **隐藏自测开关**：启动后 1.2 秒写一条 `open` 命令，再 0.6 秒自动退出（用来验证命令文件格式） |
 | `--selftest-quit` | **隐藏自测开关**：启动后 1.2 秒走一次「用户主动退出」路径（写 `quit.flag` 后退出），用来验证退出标记 |
 | `--selftest-pet` | **隐藏自测开关**：启动后 0.7 秒捏两下并弹气泡，再 0.9 秒自动退出，用来回归气泡窗口与挤压动画 |
 | `--selftest-mutex` | **隐藏自测开关**：只是把单实例互斥量换成 `Local\DshPetFloat.selftest`，方便真机上已有正式实例时跑其它自测 |
-| `--selftest-press` | **隐藏自测开关**：验证「短按只 open、按住 ≥600ms 才揉」——0.5s 模拟一次 150ms 短按，再模拟按住 1.15s，打印 petCount 变化后退出 |
+| `--selftest-press` | **隐藏自测开关**：验证揉捏计时——模拟按住 1.15s，打印每 400ms 一次的 petCount 变化后退出 |
+| `--selftest-click` | **隐藏自测开关**（v1.2.0）：验证点击语义——①单击只捏（petCount+1、open 不变）②双击打开（open+1、第二下不计数）③`clickAction="open"` 时单击直接打开 |
+| `--selftest-bubble` | **隐藏自测开关**（v1.2.0）：验证「球移动 → 气泡跟着移动」，日志打印移动前后球与气泡的坐标及位移 |
 | `--selftest-status` | **隐藏自测开关**：依次触发 question/approval/done/error 四个状态气泡，日志带 `气泡[question]` 之类来源标签，验证分池 |
 
 > 所有 `--selftest-*` 用的是另一个命名互斥量 `Local\DshPetFloat.selftest`，
@@ -124,7 +126,9 @@ type "%APPDATA%\dsh-pet\quit.flag"
 ## 3. 交互
 
 - **悬停小球**：球放大到 1.06 倍，左侧弹出状态面板，离开 600ms 后淡出。
-- **单击小球**（<4px 位移、<600ms）：**安静地**写一条 `open` 命令并置前 DSH 窗口（`clickOpens=false` 可关掉切会话，只弹面板）。
+- **单击小球**（<4px 位移、<600ms）= **捏一下**（v1.2.0 默认 `clickAction="pet"`）：挤压回弹 + 「啵啾」音效 + 随机 `petLines` 台词 + `petCount+1`，**不会**打开 DSH。
+- **双击小球**（两次单击间隔 ≤350ms）= **打开 DSH**：写一条 `open` 命令并置前 DSH 窗口（`clickOpens=false` 时只弹面板、不切会话）。
+- 想恢复旧行为（单击直接打开、没有双击概念）：`config.json` 里把 `clickAction` 改成 `"open"`。
   不计数、不出声、不弹台词、不压扁——日常点球切回对话不会被「啵」一声打扰。
 - **捏捏 / 揉捏**（v1.1，要「捏」得按住）：
   - 按住 **≥600ms** 且没拖动 = **揉**：第一次立刻捏一下，之后每 400ms 再捏一次，松手**不会**触发 `open`（想捏不会跳窗口）；
@@ -133,12 +137,13 @@ type "%APPDATA%\dsh-pet\quit.flag"
 - **气泡**（v1.1）：小球上方会冒出小文本气泡（宽 ≤260 DIP，自动换行、带指向小球的尖角，球太靠上就翻到下方）。
   触发：揉捏时（用 `petLines`）、状态切入「等你回答/等你授权/已完成/出错」时（**按状态分池**，见 `statusLines` 配置）、
   以及 idle 连续超过 `bubbleIdleSec` 时的闲聊（用 `bubbles`）；
-  点一下气泡立刻收起，鼠标悬停出面板时气泡自动让位；台词支持 `{balance}` `{today}` `{title}` `{tokens}` 占位符。
+  点一下气泡立刻收起；**气泡优先**：气泡显示期间不弹状态面板，气泡淡出后悬停才出面板；拖动小球时气泡实时跟随、也不会弹面板。
+  台词支持 `{balance}` `{today}` `{title}` `{tokens}` 占位符。
 - **拖动小球**（位移 ≥4px）：松手后位置存进配置，下次启动回到原位。
 - **右键小球 / 右键托盘图标**：打开 DSH、静音/取消静音、气泡开/关、被捏过 N 次（清零）、开机自启（勾选状态）、隐藏小球、退出。
 - **左键托盘图标**：显示/隐藏小球（隐藏后只能从托盘右键菜单里的「退出」结束）。
 - **面板标题行**：点一下展开/收起会话列表（最多 6 条，当前会话高亮），点某条会话 = 切过去。
-- **面板右下角**：`打开`（同单击小球）、`静音`、`×`（只隐藏面板，不退出）。
+- **面板右下角**：`打开`（同双击小球）、`静音`、`×`（只隐藏面板，不退出）。
 - **关闭**：主窗口的「关闭」= 隐藏到托盘，不会退出进程；真要退出用托盘菜单的「退出」。
   从菜单「退出」会写 `quit.flag`，宿主看门狗见标记就不再自动拉起（见下节「主动退出标记」）。
 
@@ -184,7 +189,8 @@ type "%APPDATA%\dsh-pet\quit.flag"
 | `scale` | `1.0` | 界面缩放，夹在 0.6 ~ 2.0 |
 | `soundOn` | `true` | 总开关；静音后任何提示音都不播 |
 | `endSoundOn` | `true` | 「一轮完成」是否播放 `host.soundFile`；waiting-question / waiting-approval 不受它影响，必播 |
-| `clickOpens` | `true` | 单击小球是否写 `open` 命令并置前 DSH |
+| `clickOpens` | `true` | 双击小球（或 `clickAction="open"` 时单击）是否写 `open` 命令并置前 DSH；`false` 时只弹面板 |
+| `clickAction` | `"pet"` | 单击语义：`"pet"` = 单击捏一下、双击打开（v1.2.0 默认）；`"open"` = 旧行为，单击直接打开 |
 | `hidePanelMs` | `600` | 鼠标离开球与面板后多少毫秒淡出，夹在 100 ~ 5000 |
 | `autoStart` | `false` | 开机自启（写 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 的 `DshPetFloat` 值） |
 | `bubbleOn` | `true` | 小文本气泡总开关（关闭后捏捏/状态/闲聊都不弹气泡，但捏捏计数与音效照常） |
@@ -224,7 +230,8 @@ type "%APPDATA%\dsh-pet\quit.flag"
   动画定时器 40ms；`Application.ThreadException` 与 `AppDomain.UnhandledException` 都写日志后继续。
 - **第三个窗口（气泡）**：`BubbleWindow.cs`，同样是分层窗口 + `WS_EX_NOACTIVATE|TOOLWINDOW`，
   宽度按文字自适应（≤260 DIP）自动换行，窗口 `Region` 设成「圆角矩形 + 尖角」的合并路径，
-  所以气泡形状外点击穿透；跟随小球每帧重定位，球太靠屏幕顶部时翻到球下方。
+  所以气泡形状外点击穿透；**每帧无条件重算位置**（v1.2.0 修复：以前只在尺寸变化时重算，球被拖动时气泡会钉在原地），
+  跟随小球每帧重定位，球太靠屏幕顶部时翻到球下方。
 - **捏捏的挤压动画**：`BallArtArgs.SquashX/SquashY` 传给 `PetArt.RenderBall`，
   球体位图以球心为基准做非等比缩放后再叠角标（**角标/发丝不压**），三段关键帧由 `BallWindow.UpdateSquash` 驱动；
   拖动过程只 `SetWindowPos` 不重绘，捏捏动画才重绘，所以拖拽不卡。
@@ -244,5 +251,5 @@ type "%APPDATA%\dsh-pet\quit.flag"
   面板底部会提示「未找到 DSH 窗口」。
 - 角色图（`host.avatarFile`）读不到时画渐变圆 + 「鱼」字兜底，不会报错。
 - 声音走 `winmm.PlaySound`（状态音）与 MCI（捏捏音），只支持系统能解码的格式（wav 最稳）。
-- **短按 = 只 open**（v1.1.1）：捏只由按住 ≥600ms 的「揉」触发，短按安静地切回会话；想纯捏不想开窗口可以把 `clickOpens=false`。
+- **单击 = 捏、双击 = 打开**（v1.2.0）：双击的第二下不再重复计数；按住 ≥600ms 仍是「揉」，松手不会打开窗口。
 - 气泡不参与命中测试之外的交互（点一下只收起，不会打开 DSH）；离线时捏捏/气泡照常工作（按 SPEC）。

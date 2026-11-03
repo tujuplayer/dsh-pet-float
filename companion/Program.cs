@@ -25,6 +25,7 @@ namespace DshPetFloat
         {
             bool selftest = opt.SelftestOpen || opt.SelftestQuit || opt.SelftestPet
                             || opt.SelftestPress || opt.SelftestStatus
+                            || opt.SelftestClick || opt.SelftestBubble
                             || opt.SelftestMutex || !string.IsNullOrEmpty(opt.SelftestRenderDir);
             return selftest ? "Local" + "\\" + "DshPetFloat.selftest" : "Local" + "\\" + "DshPetFloat";
         }
@@ -134,6 +135,12 @@ namespace DshPetFloat
                         break;
                     case "--selftest-status":
                         opt.SelftestStatus = true;
+                        break;
+                    case "--selftest-click":
+                        opt.SelftestClick = true;
+                        break;
+                    case "--selftest-bubble":
+                        opt.SelftestBubble = true;
                         break;
                     case "--selftest-render":
                         if (i + 1 < args.Length)

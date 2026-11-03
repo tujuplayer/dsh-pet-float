@@ -27,6 +27,8 @@ namespace DshPetFloat
         public bool SelftestPet;
         public bool SelftestPress;
         public bool SelftestStatus;
+        public bool SelftestClick;
+        public bool SelftestBubble;
         public bool SelftestMutex;
         public string SelftestRenderDir;
     }
@@ -64,6 +66,7 @@ namespace DshPetFloat
 
         private long _cmdSeq = 1;
         private bool _panelSuppressed;  // 点了面板的 ×：光标离开之前别再弹
+        private int _openCalls;         // 实际触发"打开 DSH"的次数（--selftest-click 用日志证明）
         private long _lastInteractionMs;
         private bool _exiting;
 
@@ -109,6 +112,8 @@ namespace DshPetFloat
             _ball.RightClicked = OnBallRightClick;
             _ball.PositionCommitted = OnBallPositionCommitted;
             _ball.Moved = OnBallMoved;
+            _ball.ClickAction = _config.ClickAction;
+            _ball.DoubleClicked = OnBallDoubleClicked;
             _ball.ShowBall();
 
             _panel = new PanelWindow(this);
@@ -147,6 +152,10 @@ namespace DshPetFloat
                 StartSelftestPress();
             if (_opt.SelftestStatus)
                 StartSelftestStatus();
+            if (_opt.SelftestClick)
+                StartSelftestClick();
+            if (_opt.SelftestBubble)
+                StartSelftestBubble();
         }
 
         // ───────────────────── 状态文件 ─────────────────────
@@ -369,7 +378,11 @@ namespace DshPetFloat
             if (!_config.BubbleOn || _bubble == null)
                 return;
             if (_panel != null && _panel.IsPanelShown)
-                return; // SPEC：面板出现时不弹新气泡，免得两个窗口打架
+            {
+                // v1.2.0：气泡优先。以前这里是直接 return，导致"悬停出面板 → 点球想捏"永远看不到气泡；
+                // 现在把面板收掉再弹，气泡淡出后悬停逻辑会自然把面板再拉出来。
+                _panel.HidePanel();
+            } // SPEC：面板出现时不弹新气泡，免得两个窗口打架
             if (_ball == null || !_ball.BallVisible)
                 return;
             string text = WalletFormat.Pick(lines, _state, _online, _rng);
@@ -418,19 +431,24 @@ namespace DshPetFloat
                 _ball.Tick(_animMs);
 
                 Rectangle ballBounds = new Rectangle(_ball.Location, _ball.Size);
-                _panel.SetQuiet(_ball.IsDragging);
+                // v1.2.0（Lead m00777 第 3 条）：拖动只移动球，不弹面板也不吞气泡
+                bool dragging = _ball.IsDragging;
+                _panel.SetQuiet(dragging);
                 _panel.Tick(_animMs, ballBounds);
 
                 Point cursor = Native.GetCursorPosPoint();
                 // 光标贴着球（含拖动刚结束的一瞬）就算“在球上”：分层窗口偶发拿不到 Hover 时不至于把面板收掉
-                bool nearBall = _ball.Hover || _ball.IsDragging || PointNear(ballBounds, cursor, 24);
-                bool overBall = _ball.BallVisible && nearBall;
+                bool nearBall = _ball.Hover || PointNear(ballBounds, cursor, 24);
+                bool overBall = _ball.BallVisible && !dragging && nearBall;
                 bool overPanel = _panel.ContainsCursor(cursor);
 
                 if (!overBall && !overPanel)
                     _panelSuppressed = false;
 
-                bool needPanel = ((overBall || overPanel) && !_panelSuppressed) || _panel.HasNotice;
+                bool bubbleShown = _bubble != null && _bubble.IsShown;
+                // 气泡优先：气泡显示期间不弹面板，等它淡出结束再按原来的悬停逻辑出面板
+                bool needPanel = !dragging && !bubbleShown
+                    && (((overBall || overPanel) && !_panelSuppressed) || _panel.HasNotice);
                 if (needPanel)
                 {
                     _lastInteractionMs = Util.NowMs();
@@ -443,12 +461,7 @@ namespace DshPetFloat
 
                 // v1.1：气泡跟随小球；面板一出现就把气泡收掉（别挡着面板），另外处理 idle 闲聊
                 if (_bubble != null)
-                {
-                    if (_panel.IsPanelShown && _bubble.IsShown)
-                        _bubble.HideBubble();
-                    else
-                        _bubble.Tick(_animMs, ballBounds);
-                }
+                    _bubble.Tick(_animMs, ballBounds);
                 MaybeIdleBubble();
 
                 UpdateTrayIconIfNeeded();
@@ -465,7 +478,11 @@ namespace DshPetFloat
         {
             _panelSuppressed = false;
             _lastInteractionMs = Util.NowMs();
+            // 打开 DSH 期间不需要再顶着小气泡（气泡优先只针对"悬停出面板"，这里用户已经明确要打开）
+            if (_bubble != null)
+                _bubble.HideBubble();
             _panel.ShowPanel();
+            _openCalls++;
 
             // 契约：单击 = 写 open 命令 + 置前 DSH；clickOpens=false 时只弹面板
             if (!_config.ClickOpens)
@@ -473,6 +490,12 @@ namespace DshPetFloat
             string title = _state.Active != null ? _state.Active.Title : "";
             WriteCommand("open", title);
             BringDshToFront();
+        }
+
+        /// <summary>v1.2.0：双击 = 打开 DSH（写 open 命令 + 置前 + 切会话）。</summary>
+        private void OnBallDoubleClicked()
+        {
+            OnBallClicked();
         }
 
         private void OnBallRightClick()
@@ -943,16 +966,14 @@ namespace DshPetFloat
         /// </summary>
         private void StartSelftestPress()
         {
-            Log.Info("自测：短按/揉捏语义验证开始");
+            Log.Info("自测：揉捏节奏验证开始");
             Timer t = new Timer();
             t.Interval = 500;
             t.Tick += delegate
             {
                 t.Stop();
                 t.Dispose();
-                int before = _config.PetCount;
-                _ball.TestShortClick(150);
-                Log.Info("自测[短按] petCount " + before + " -> " + _config.PetCount + "（应不变）");
+                // v1.2.0：短按语义改由 --selftest-click 专门验证，这里只验证"按住揉"的节奏
                 _ball.TestBeginHold();
 
                 Timer t2 = new Timer();
@@ -961,7 +982,7 @@ namespace DshPetFloat
                 {
                     t2.Stop();
                     t2.Dispose();
-                    Log.Info("自测[揉捏] 按住约 700ms 后 petCount=" + _config.PetCount + "（应比短按后 +1）");
+                    Log.Info("自测[揉捏] 按住约 700ms 后 petCount=" + _config.PetCount + "（应 +1）");
 
                     Timer t3 = new Timer();
                     t3.Interval = 450; // 累计 1150ms，应触发第 2 次揉
@@ -1012,6 +1033,130 @@ namespace DshPetFloat
                 string status = order[index++];
                 Log.Info("自测：触发状态 " + status);
                 OnStatusBubble(status);
+            };
+            t.Start();
+        }
+
+        /// <summary>
+        /// 隐藏开关（v1.2.0）：验证点击语义 ——
+        /// ①单击只捏（petCount+1、open 次数不变）②双击打开（open+1、第二下不计数）③clickAction="open" 时单击打开。
+        /// </summary>
+        private void StartSelftestClick()
+        {
+            Log.Info("自测：单击/双击语义验证开始（clickAction=" + _config.ClickAction + "）");
+            Timer t = new Timer();
+            t.Interval = 500;
+            t.Tick += delegate
+            {
+                t.Stop();
+                t.Dispose();
+
+                int petBefore = _config.PetCount;
+                int openBefore = _openCalls;
+                _ball.TestShortClick(120);
+                Log.Info("自测[单击] petCount " + petBefore + " -> " + _config.PetCount
+                         + "，open 次数 " + openBefore + " -> " + _openCalls + "（应 +1 捏、open 不变）");
+
+                Timer t2 = new Timer();
+                t2.Interval = 500;
+                t2.Tick += delegate
+                {
+                    t2.Stop();
+                    t2.Dispose();
+                    int petB = _config.PetCount;
+                    int openB = _openCalls;
+                    _ball.TestShortClick(120); // 第一下：捏
+                    _ball.TestShortClick(120); // 第二下（间隔 <350ms）：双击 → 打开，不计数
+                    Log.Info("自测[双击] petCount " + petB + " -> " + _config.PetCount
+                             + "（应 +1，第二下不计数），open 次数 " + openB + " -> " + _openCalls + "（应 +1）");
+
+                    Timer t3 = new Timer();
+                    t3.Interval = 500;
+                    t3.Tick += delegate
+                    {
+                        t3.Stop();
+                        t3.Dispose();
+                        string oldAction = _ball.ClickAction;
+                        _ball.ClickAction = "open";
+                        int petC = _config.PetCount;
+                        int openC = _openCalls;
+                        _ball.TestShortClick(120);
+                        Log.Info("自测[clickAction=open] open 次数 " + openC + " -> " + _openCalls
+                                 + "（应 +1），petCount " + petC + " -> " + _config.PetCount + "（应不变）");
+                        _ball.ClickAction = oldAction;
+
+                        Timer t4 = new Timer();
+                        t4.Interval = 400;
+                        t4.Tick += delegate
+                        {
+                            t4.Stop();
+                            t4.Dispose();
+                            Log.Info("自测：单击语义验证结束，退出");
+                            ExitApp(false);
+                        };
+                        t4.Start();
+                    };
+                    t3.Start();
+                };
+                t2.Start();
+            };
+            t.Start();
+        }
+
+        /// <summary>隐藏开关（v1.2.0）：验证"球移动 → 气泡 Location 跟着变"（打移动前后坐标）。</summary>
+        private void StartSelftestBubble()
+        {
+            Log.Info("自测：气泡跟随验证开始");
+            Timer t = new Timer();
+            t.Interval = 500;
+            t.Tick += delegate
+            {
+                t.Stop();
+                t.Dispose();
+                Rectangle ball = new Rectangle(_ball.Location, _ball.Size);
+                _bubble.ShowLine("自测：气泡要跟着球走", ball, 8000);
+                Log.Info("自测[气泡] 显示后 球=(" + ball.X + "," + ball.Y + ") 气泡=("
+                         + _bubble.Location.X + "," + _bubble.Location.Y + ")");
+
+                Timer t2 = new Timer();
+                t2.Interval = 800;
+                t2.Tick += delegate
+                {
+                    t2.Stop();
+                    t2.Dispose();
+                    Rectangle before = new Rectangle(_ball.Location, _ball.Size);
+                    Point bubbleBefore = _bubble.Location;
+                    Log.Info("自测[气泡] 移动前 球=(" + before.X + "," + before.Y + ") 气泡=("
+                             + bubbleBefore.X + "," + bubbleBefore.Y + ")");
+                    _ball.MoveTo(before.X - 160, before.Y - 120);
+
+                    Timer t3 = new Timer();
+                    t3.Interval = 600;
+                    t3.Tick += delegate
+                    {
+                        t3.Stop();
+                        t3.Dispose();
+                        Rectangle after = new Rectangle(_ball.Location, _ball.Size);
+                        int dx = _bubble.Location.X - bubbleBefore.X;
+                        int dy = _bubble.Location.Y - bubbleBefore.Y;
+                        Log.Info("自测[气泡] 移动后 球=(" + after.X + "," + after.Y + ") 气泡=("
+                                 + _bubble.Location.X + "," + _bubble.Location.Y + ") 气泡位移=(" + dx + "," + dy
+                                 + ")（期望≈(-160,-120)，被屏幕边缘钳制时会小一些）");
+
+                        Timer t4 = new Timer();
+                        t4.Interval = 400;
+                        t4.Tick += delegate
+                        {
+                            t4.Stop();
+                            t4.Dispose();
+                            Log.Info("自测：气泡跟随验证结束，退出");
+                            ExitApp(false);
+                        };
+                        t4.Start();
+                    };
+                    t3.Start();
+                };
+                t2.Start();
             };
             t.Start();
         }

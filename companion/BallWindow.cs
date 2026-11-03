@@ -41,6 +41,7 @@ namespace DshPetFloat
 
         // 捏捏（SPEC 3.5.3）：按下不动 600ms 内抬起 = 捏一次；按住 ≥600ms 不动 = 持续揉，每 400ms 一次
         private const int ClickMaxMs = 600;
+        private const int DoubleClickMaxMs = 350; // 两次单击间隔 ≤350ms 算双击（v1.2.0）
         private const int RubHoldMs = 600;
         private const int RubIntervalMs = 400;
         private bool _rubbing;
@@ -48,6 +49,8 @@ namespace DshPetFloat
         private bool _testHolding;
         private bool _testHoverHit;
         private long _lastRubMs;
+        // v1.2.0：上一次"单击"的时间，用来识别双击（0 = 没有上一拍）
+        private long _lastClickMs;
 
         // 挤压回弹动画（0 表示没在播）：压扁 80ms → 过冲 120ms → 回正 160ms
         private const int SquashTotalMs = 360;
@@ -65,11 +68,15 @@ namespace DshPetFloat
         private Image _avatar;
 
         // 由 PetApp 挂接的回调
-        public Action Clicked;                 // 单击（写 open 命令 + 置前 DSH）
+        public Action Clicked;                 // 打开 DSH（clickAction=open 的单击 / 双击）
+        public Action DoubleClicked;           // 双击（写 open 命令 + 置前 DSH）
         public Action RightClicked;            // 右键（弹菜单）
         public Action<Point> PositionCommitted; // 拖动结束（保存位置）
         public Action Moved;                   // 拖动中每次移动（让面板实时跟随）
         public Action Pet;                     // 被捏了一下（PetApp 记账、放音、弹台词）
+
+        /// <summary>单击语义："pet"（默认）= 单击捏、双击打开；"open" = 单击直接打开（旧行为）。</summary>
+        public string ClickAction = "pet";
 
         /// <summary>是否正在被拖动（面板据此保持显示并跟随）。</summary>
         public bool IsDragging
@@ -554,6 +561,7 @@ namespace DshPetFloat
 
             if (wasDrag)
             {
+                _lastClickMs = 0;
                 Log.Info("拖动结束，位置 " + Location.X + "," + Location.Y + "（跟随 " + _moveCount + " 次）");
                 if (PositionCommitted != null)
                     PositionCommitted(Location);
@@ -567,6 +575,7 @@ namespace DshPetFloat
             // 揉过（按住 ≥600ms）松手：只算捏，绝不触发 open —— 不然想捏就会跳窗口
             if (rubbed)
             {
+                _lastClickMs = 0;
                 Log.Info("揉捏结束（按住 " + elapsed + "ms）");
                 return;
             }
@@ -575,18 +584,40 @@ namespace DshPetFloat
             if (!_testHoverHit && !HitTestScreen(cursor))
                 return;
 
-            // v1.1.1（Lead m00728）：<600ms 的短按 = 只 open（安静：不计数、不出声、不弹台词、不压扁）；
-            // 捏只由 ≥600ms 的按住揉触发，日常点球切回对话不会被"啵"一声打断。
-            if (elapsed <= ClickMaxMs)
-            {
-                if (Clicked != null)
-                    Clicked();
-            }
-            else
+            if (elapsed > ClickMaxMs)
             {
                 // 理论上到不了这里（≥600ms 时 Tick 已经进入揉捏分支），留个日志便于排查
                 Log.Info("长按 " + elapsed + "ms 松手：未进入揉捏，忽略");
+                return;
             }
+
+            // v1.2.0（Lead m00777 第 1 条）：用户反馈"点击是打开 dsh 不是捏捏"，语义改成
+            //   单击 = 捏一下（挤压回弹 + 音效 + 台词 + 计数，不发 open）
+            //   双击 = 打开 DSH（第二下不重复计数，不然双击会连捏两下）
+            // 配置 clickAction="open" 时退回旧行为：单击直接打开，双击不再特殊处理。
+            if (string.Equals(ClickAction, "open", StringComparison.OrdinalIgnoreCase))
+            {
+                _lastClickMs = 0;
+                if (Clicked != null)
+                    Clicked();
+                return;
+            }
+
+            long now = Util.NowMs();
+            long gap = _lastClickMs > 0 ? now - _lastClickMs : long.MaxValue;
+            if (gap <= DoubleClickMaxMs)
+            {
+                // 双击：第一次的"捏"已经生效，第二下只负责打开，不再计数
+                _lastClickMs = 0;
+                Log.Info("双击（间隔 " + gap + "ms）→ 打开 DSH");
+                if (DoubleClicked != null)
+                    DoubleClicked();
+                return;
+            }
+
+            _lastClickMs = now;
+            Log.Info("单击 → 捏一下（不发 open）");
+            TriggerPet(cursor);
         }
 
         // ───────── v1.1.1 自测钩子（只有 --selftest-press 会调，正常运行路径不碰） ─────────
